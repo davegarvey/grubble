@@ -5,6 +5,8 @@ Automatic semantic versioning based on conventional commits, optimised for AI-ge
 ## Installation
 
 ```bash
+npm install -g @davegarvey/bumper
+# or
 npx @davegarvey/bumper
 ```
 
@@ -12,10 +14,15 @@ npx @davegarvey/bumper
 
 ```bash
 # Run in your project root
-npx @davegarvey/bumper
+bump
+
+# Or with npx
+npx bump
 
 # Don't push to remote
-npx @davegarvey/bumper --no-push
+bump --no-push
+# or
+npx bump --no-push
 ```
 
 ## Configuration
@@ -61,7 +68,7 @@ jobs:
     - name: Install bumper
       run: npm install @davegarvey/bumper
     - name: Bump version and release
-      run: npx auto-version
+      run: npx bump
 ```
 
 ## How It Works

@@ -4,7 +4,7 @@
     "description": "Automatic semantic versioning based on conventional commits, optimized for AI-generated commit messages",
     "type": "module",
     "bin": {
-        "auto-version": "bin/auto-version.js"
+        "bump": "bin/bump.js"
     },
     "files": [
         "bin/",
