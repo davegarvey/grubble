@@ -52,4 +52,4 @@ jobs:
       run: npm run lint
 
     - name: Bump version
-      run: node bin/auto-version.js
+      run: npx @davegarvey/bumper
