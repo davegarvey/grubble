@@ -10,6 +10,7 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
+      id-token: write  # Required for OIDC
       contents: write      # Required for pushing commits/tags
       pull-requests: read  # Required for PR info
     steps:
@@ -21,6 +22,7 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 20
+        registry-url: 'https://registry.npmjs.org'
 
     - name: Install dependencies
       run: rm -rf node_modules package-lock.json && npm install
@@ -41,3 +43,6 @@ jobs:
 
     - name: Bump version and release
       run: npx bump --push --tag
+
+    - name: Publish to npm
+      run: npm publish # uses NPM trusted publisher
