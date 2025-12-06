@@ -20,8 +20,10 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: 18
-        cache: npm
+        node-version: 20
+
+    - name: Install dependencies
+      run: rm -rf node_modules package-lock.json && npm install
 
     - name: Configure Git
       run: |
@@ -37,5 +39,5 @@ jobs:
     - name: Run linting
       run: npm run lint
 
-    - name: Bump version
-      run: npx bump
+    - name: Bump version and release
+      run: npx bump --push --tag

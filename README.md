@@ -19,10 +19,20 @@ bump
 # Or with npx
 npx bump
 
-# Don't push to remote
-bump --no-push
+# Push to remote
+bump --push
 # or
-npx bump --no-push
+npx bump --push
+
+# Create git tag
+bump --tag
+# or
+npx bump --tag
+
+# Show help
+bump --help
+# or
+bump -h
 ```
 
 ## Configuration
@@ -34,7 +44,8 @@ Create `.versionrc.json` in your project root:
   "packageFiles": ["package.json", "client/package.json"],
   "commitPrefix": "chore: bump version",
   "tagPrefix": "v",
-  "push": true
+  "push": false,
+  "tag": false
 }
 ```
 
@@ -43,7 +54,8 @@ Create `.versionrc.json` in your project root:
 - **`packageFiles`**: Array of package.json files to update (default: `["package.json"]`)
 - **`commitPrefix`**: Prefix for version bump commits (default: `"chore: bump version"`)
 - **`tagPrefix`**: Prefix for git tags (default: `"v"`)
-- **`push`**: Whether to push commits/tags to remote (default: `true`)
+- **`push`**: Whether to push commits/tags to remote (default: `false`)
+- **`tag`**: Whether to create git tags for versions (default: `false`)
 
 ### Best Practices
 
@@ -70,7 +82,6 @@ jobs:
     permissions:
       contents: write      # Required for pushing commits/tags
       pull-requests: read  # Required for PR info
-      actions: read        # Required for workflow info
     steps:
     - uses: actions/checkout@v4
       with:
@@ -89,7 +100,7 @@ jobs:
     - name: Install bumper
       run: npm install @davegarvey/bumper
     - name: Bump version and release
-      run: npx bump
+      run: npx bump --push --tag
 ```
 
 ### CI Best Practices
@@ -104,8 +115,9 @@ jobs:
 1. Analyzes commits since last tag
 2. Determines version bump (major/minor/patch) based on conventional commits
 3. Updates package.json files
-4. Creates git commit and tag
-5. Optionally pushes to remote
+4. Creates git commit
+5. Optionally creates git tag
+6. Optionally pushes to remote
 
 ## Commit Types
 
@@ -143,7 +155,7 @@ jobs:
 
 - Check commit format with conventional commits specification
 - Verify CI permissions and branch protection rules
-- Test locally with `bump --no-push` for debugging
+- Test locally with `bump` for debugging (pushing is disabled by default)
 
 ## For AI Users
 
