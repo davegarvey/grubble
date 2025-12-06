@@ -23,6 +23,9 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
+    - name: Install bumper
+      run: npm install -g @davegarvey/bumper
+
     - name: Run tests
       run: npm test
 
@@ -30,4 +33,4 @@ jobs:
       run: npm run lint
 
     - name: Bump version
-      run: npx @davegarvey/bumper
+      run: auto-version
