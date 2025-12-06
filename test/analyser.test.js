@@ -38,4 +38,56 @@ describe('analyseCommits', () => {
         expect(result.triggeringCommits).toContain('Minor: feat: add new feature');
         expect(result.triggeringCommits).toContain('Patch: fix: correct bug');
     });
+
+    it('should detect breaking changes with text', () => {
+        const commits = ['feat: add breaking change\n\nBREAKING CHANGE: api changed'];
+        const result = analyseCommits(commits);
+        expect(result.bump).toBe('major');
+    });
+
+    it('should handle scoped commits', () => {
+        const commits = ['feat(api): add new endpoint'];
+        const result = analyseCommits(commits);
+        expect(result.bump).toBe('minor');
+    });
+
+    it('should detect patch bump for refactor commits', () => {
+        const commits = ['refactor: simplify code'];
+        const result = analyseCommits(commits);
+        expect(result.bump).toBe('patch');
+    });
+
+    it('should detect patch bump for perf commits', () => {
+        const commits = ['perf: optimize algorithm'];
+        const result = analyseCommits(commits);
+        expect(result.bump).toBe('patch');
+    });
+
+    it('should ignore docs commits', () => {
+        const commits = ['docs: update readme'];
+        const result = analyseCommits(commits);
+        expect(result.bump).toBe('none');
+    });
+
+    it('should ignore test commits', () => {
+        const commits = ['test: add unit tests'];
+        const result = analyseCommits(commits);
+        expect(result.bump).toBe('none');
+    });
+
+    it('should ignore config commits', () => {
+        const commits = ['config: update eslint'];
+        const result = analyseCommits(commits);
+        expect(result.bump).toBe('none');
+    });
+
+    it('should handle bump precedence correctly', () => {
+        const commits = [
+            'fix: bug fix',
+            'feat: new feature',
+            'feat!: breaking change'
+        ];
+        const result = analyseCommits(commits);
+        expect(result.bump).toBe('major');
+    });
 });
