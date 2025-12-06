@@ -25,4 +25,17 @@ describe('analyseCommits', () => {
         const result = analyseCommits(commits);
         expect(result.bump).toBe('none');
     });
+
+    it('should filter out its own version bump commits', () => {
+        const commits = [
+            'feat: add new feature',
+            'chore: bump version to 1.1.0',
+            'fix: correct bug'
+        ];
+        const result = analyseCommits(commits);
+        expect(result.bump).toBe('minor');
+        expect(result.triggeringCommits).toHaveLength(2);
+        expect(result.triggeringCommits).toContain('Minor: feat: add new feature');
+        expect(result.triggeringCommits).toContain('Patch: fix: correct bug');
+    });
 });
