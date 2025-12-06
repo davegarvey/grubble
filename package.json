@@ -8,8 +8,7 @@
     },
     "files": [
         "bin/",
-        "lib/",
-        ".versionrc.json"
+        "lib/"
     ],
     "keywords": [
         "semver",
