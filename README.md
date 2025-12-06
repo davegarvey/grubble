@@ -1,6 +1,6 @@
 # Bumper
 
-Automatic semantic versioning based on conventional commits, optimized for AI-generated commit messages.
+Automatic semantic versioning based on conventional commits, optimised for AI-generated commit messages.
 
 ## Installation
 
