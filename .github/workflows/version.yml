@@ -1,4 +1,4 @@
-name: Release
+name: Version
 
 on:
   pull_request:
@@ -16,7 +16,7 @@ on:
         - 'false'
 
 jobs:
-  release:
+  version:
     if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
@@ -60,7 +60,7 @@ jobs:
       id: post-bump
       run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-    - name: Bump version and release
+    - name: Bump version
       if: github.event.inputs.skip_version_bump != 'true'
       run: npx bump --push --tag
 
@@ -68,9 +68,9 @@ jobs:
       id: final-version
       run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-    - name: Release summary
+    - name: Version summary
       run: |
-        echo "📦 Release workflow completed!"
+        echo "📦 Version workflow completed!"
         if [ "${{ github.event.inputs.skip_version_bump }}" = "true" ]; then
           echo "🔍 TEST MODE - Version bumping skipped"
           echo "Current version: ${{ steps.final-version.outputs.version }}"
@@ -81,6 +81,6 @@ jobs:
             echo "🏷️  Tag v${{ steps.final-version.outputs.version }} created and pushed"
             echo "📤 Publishing will be handled by the separate publish workflow when tag is pushed"
           else
-            echo "⏭️  No version change (no new commits since last release)"
+            echo "⏭️  No version change (no new commits since last version)"
           fi
         fi
