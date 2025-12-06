@@ -68,8 +68,9 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required for pushing commits/tags
-      pull-requests: read
+      contents: write      # Required for pushing commits/tags
+      pull-requests: read  # Required for PR info
+      actions: read        # Required for workflow info
     steps:
     - uses: actions/checkout@v4
       with:
