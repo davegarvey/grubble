@@ -37,5 +37,38 @@ describe('config', () => {
             // Cleanup
             fs.unlinkSync(testConfigPath);
         });
+
+        it('should handle empty config file gracefully', () => {
+            const testConfigPath = path.join(__dirname, 'fixtures', 'empty.json');
+            fs.writeFileSync(testConfigPath, '');
+
+            const config = loadConfig(path.join(__dirname, 'fixtures'));
+            expect(config).toEqual({
+                packageFiles: ['package.json'],
+                commitPrefix: 'chore: bump version',
+                tagPrefix: 'v',
+                push: true
+            });
+
+            // Cleanup
+            fs.unlinkSync(testConfigPath);
+        });
+
+        it('should handle invalid JSON in config file', () => {
+            const testConfigPath = path.join(__dirname, 'fixtures', 'invalid.json');
+            fs.writeFileSync(testConfigPath, '{ invalid json }');
+
+            // Should not throw, should warn and use defaults
+            const config = loadConfig(path.join(__dirname, 'fixtures'));
+            expect(config).toEqual({
+                packageFiles: ['package.json'],
+                commitPrefix: 'chore: bump version',
+                tagPrefix: 'v',
+                push: true
+            });
+
+            // Cleanup
+            fs.unlinkSync(testConfigPath);
+        });
     });
 });
