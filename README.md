@@ -160,3 +160,4 @@ jobs:
 ## For AI Users
 
 This tool is optimised for AI-generated commit messages that follow conventional commit format. See [.github/prompts/sc.prompt.md](.github/prompts/sc.prompt.md) for an example prompt that generates commits compatible with bumper.
+# Test commit for publish testing
