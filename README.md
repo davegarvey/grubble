@@ -24,6 +24,11 @@ bump --push
 # or
 npx bump --push
 
+# Create git tag
+bump --tag
+# or
+npx bump --tag
+
 # Show help
 bump --help
 # or
@@ -39,7 +44,8 @@ Create `.versionrc.json` in your project root:
   "packageFiles": ["package.json", "client/package.json"],
   "commitPrefix": "chore: bump version",
   "tagPrefix": "v",
-  "push": false
+  "push": false,
+  "tag": false
 }
 ```
 
@@ -49,6 +55,7 @@ Create `.versionrc.json` in your project root:
 - **`commitPrefix`**: Prefix for version bump commits (default: `"chore: bump version"`)
 - **`tagPrefix`**: Prefix for git tags (default: `"v"`)
 - **`push`**: Whether to push commits/tags to remote (default: `false`)
+- **`tag`**: Whether to create git tags for versions (default: `false`)
 
 ### Best Practices
 
@@ -108,8 +115,9 @@ jobs:
 1. Analyzes commits since last tag
 2. Determines version bump (major/minor/patch) based on conventional commits
 3. Updates package.json files
-4. Creates git commit and tag
-5. Optionally pushes to remote
+4. Creates git commit
+5. Optionally creates git tag
+6. Optionally pushes to remote
 
 ## Commit Types
 

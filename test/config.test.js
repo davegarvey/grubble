@@ -14,7 +14,8 @@ describe('config', () => {
                 packageFiles: ['package.json'],
                 commitPrefix: 'chore: bump version',
                 tagPrefix: 'v',
-                push: false
+                push: false,
+                tag: false
             });
         });
 
@@ -31,7 +32,8 @@ describe('config', () => {
                 packageFiles: ['package.json', 'package-lock.json'],
                 commitPrefix: 'chore: bump version',
                 tagPrefix: 'v',
-                push: false
+                push: false,
+                tag: false
             });
 
             // Cleanup
@@ -47,7 +49,8 @@ describe('config', () => {
                 packageFiles: ['package.json'],
                 commitPrefix: 'chore: bump version',
                 tagPrefix: 'v',
-                push: false
+                push: false,
+                tag: false
             });
 
             // Cleanup
@@ -64,7 +67,8 @@ describe('config', () => {
                 packageFiles: ['package.json'],
                 commitPrefix: 'chore: bump version',
                 tagPrefix: 'v',
-                push: false
+                push: false,
+                tag: false
             });
 
             // Cleanup

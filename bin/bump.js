@@ -10,6 +10,7 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 
 Options:
   --push        Push changes to remote
+  --tag         Create git tag for the version
   --help, -h    Show this help message
 
 Automatic semantic versioning based on conventional commits.`);
@@ -18,6 +19,7 @@ Automatic semantic versioning based on conventional commits.`);
 
 const config = loadConfig();
 const shouldPush = process.argv.includes('--push') || config.push;
+const shouldTag = process.argv.includes('--tag') || config.tag;
 
 try {
     const currentVersion = getCurrentVersion(config.packageFiles[0]);
@@ -50,13 +52,17 @@ try {
     console.log(`Updated to ${newVersion}`);
 
     commitChanges(newVersion, updatedFiles);
-    createTag(newVersion);
+    if (shouldTag) {
+        createTag(newVersion);
+    }
 
     if (shouldPush) {
         push();
         console.log('Pushed changes and tags.');
     } else {
-        console.log('Committed and tagged locally.');
+        const actions = ['Committed'];
+        if (shouldTag) actions.push('tagged');
+        console.log(`${actions.join(' and ')} locally.`);
     }
 
 } catch (error) {
