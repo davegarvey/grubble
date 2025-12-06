@@ -59,3 +59,5 @@ jobs:
     - name: Publish to npm
       if: steps.pre-bump.outputs.version != steps.post-bump.outputs.version
       run: npm publish
+      env:
+        NODE_AUTH_TOKEN: ''  # Clear to use OIDC trusted publishing
