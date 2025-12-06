@@ -6,10 +6,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
     inputs:
-      dry_run:
-        description: 'Skip actual publishing (for testing)'
+      skip_version_bump:
+        description: 'Skip version bumping for testing workflow logic'
         required: false
-        default: 'true'
+        default: 'false'
         type: choice
         options:
         - 'true'
@@ -56,29 +56,31 @@ jobs:
       run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
     - name: Bump version and release
-      run: npx bump --push --tag
-
     - name: Get new version
       id: post-bump
       run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-    - name: Update npm for trusted publishing
-      if: steps.pre-bump.outputs.version != steps.post-bump.outputs.version
-      run: npm install -g npm@latest
+    - name: Bump version and release
+      if: github.event.inputs.skip_version_bump != 'true'
+      run: npx bump --push --tag
 
-    - name: Publish to npm
-      if: steps.pre-bump.outputs.version != steps.post-bump.outputs.version && github.event.inputs.dry_run != 'true'
-      run: npm publish
-      env:
-        NODE_AUTH_TOKEN: ''  # Clear to use OIDC trusted publishing
+    - name: Get final version
+      id: final-version
+      run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-    - name: Dry run summary
-      if: github.event.inputs.dry_run == 'true'
+    - name: Release summary
       run: |
-        echo "🔍 DRY RUN MODE - No actual publishing performed"
-        echo "Version would change: ${{ steps.pre-bump.outputs.version }} → ${{ steps.post-bump.outputs.version }}"
-        if [ "${{ steps.pre-bump.outputs.version }}" != "${{ steps.post-bump.outputs.version }}" ]; then
-          echo "✅ Would publish @davegarvey/bumper@${{ steps.post-bump.outputs.version }} to npm"
+        echo "📦 Release workflow completed!"
+        if [ "${{ github.event.inputs.skip_version_bump }}" = "true" ]; then
+          echo "🔍 TEST MODE - Version bumping skipped"
+          echo "Current version: ${{ steps.final-version.outputs.version }}"
         else
-          echo "⏭️  Would skip publishing (version unchanged)"
+          echo "Version: ${{ steps.final-version.outputs.version }}"
+          if [ "${{ steps.pre-bump.outputs.version }}" != "${{ steps.final-version.outputs.version }}" ]; then
+            echo "✅ Version bumped from ${{ steps.pre-bump.outputs.version }} to ${{ steps.final-version.outputs.version }}"
+            echo "🏷️  Tag v${{ steps.final-version.outputs.version }} created and pushed"
+            echo "📤 Publishing will be handled by the separate publish workflow when tag is pushed"
+          else
+            echo "⏭️  No version change (no new commits since last release)"
+          fi
         fi
