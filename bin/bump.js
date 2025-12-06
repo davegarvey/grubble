@@ -5,6 +5,12 @@ import { analyseCommits } from '../lib/analyser.js';
 import { getCurrentVersion, bumpVersion, updatePackageFiles } from '../lib/versioner.js';
 import { loadConfig } from '../lib/config.js';
 
+function buildActionMessage(baseAction, shouldTag, isPush) {
+    const actions = [baseAction];
+    if (shouldTag) actions.push(isPush ? 'and tags' : 'and tagged');
+    return `${actions.join(' ')}${isPush ? '.' : ' locally.'}`;
+}
+
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
     console.log(`Usage: bump [options]
 
@@ -58,13 +64,9 @@ try {
 
     if (shouldPush) {
         push();
-        const actions = ['Pushed changes'];
-        if (shouldTag) actions.push('and tags');
-        console.log(`${actions.join(' ')}.`);
+        console.log(buildActionMessage('Pushed changes', shouldTag, true));
     } else {
-        const actions = ['Committed'];
-        if (shouldTag) actions.push('and tagged');
-        console.log(`${actions.join(' ')} locally.`);
+        console.log(buildActionMessage('Committed', shouldTag, false));
     }
 
 } catch (error) {
