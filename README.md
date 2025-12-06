@@ -24,11 +24,6 @@ bump --push
 # or
 npx bump --push
 
-# Don't push to remote (default)
-bump --no-push
-# or
-npx bump --no-push
-
 # Show help
 bump --help
 # or

@@ -10,7 +10,6 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 
 Options:
   --push        Push changes to remote
-  --no-push     Don't push changes to remote (overrides --push)
   --help, -h    Show this help message
 
 Automatic semantic versioning based on conventional commits.`);
@@ -18,7 +17,7 @@ Automatic semantic versioning based on conventional commits.`);
 }
 
 const config = loadConfig();
-const shouldPush = process.argv.includes('--push') && !process.argv.includes('--no-push');
+const shouldPush = process.argv.includes('--push') || config.push;
 
 try {
     const currentVersion = getCurrentVersion(config.packageFiles[0]);
