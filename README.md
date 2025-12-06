@@ -118,19 +118,23 @@ jobs:
 ### Common Issues
 
 **"Author identity unknown"**
+
 - **Solution**: Configure git identity in CI before running bumper
 - **Example**: Add git config step as shown in CI workflow
 
 **"auto-version: not found"**
+
 - **Solution**: Install bumper locally before running: `npm install @davegarvey/bumper`
 - **Why**: npx may not resolve bins from remote packages reliably
 
 **No version bump on merge**
+
 - **Check**: Ensure PR contains conventional commits with `feat:`, `fix:`, etc.
 - **Check**: Verify CI has write permissions to repository
 - **Check**: Confirm `fetch-depth: 0` in checkout action
 
 **Invalid config file**
+
 - **Solution**: Ensure `.versionrc.json` contains valid JSON
 - **Note**: Empty or invalid files fall back to defaults with a warning
 
