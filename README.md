@@ -34,7 +34,7 @@ Create `.versionrc.json` in your project root:
 
 ## GitHub Actions
 
-Add this to your CI workflow to automatically bump versions when PRs are merged to main:
+In a typical CI/CD scenario, bumper runs automatically when PRs are merged to main:
 
 ```yaml
 name: Release
