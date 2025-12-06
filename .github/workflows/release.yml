@@ -55,7 +55,7 @@ jobs:
       id: pre-bump
       run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-    - name: Bump version and release
+
     - name: Get new version
       id: post-bump
       run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
