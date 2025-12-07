@@ -68,7 +68,7 @@ Create `.versionrc.json` in your project root:
 ### Best Practices
 
 - **Branch Protection**: Protect your main branch and require CI checks to pass
-- **Conventional Commits**: Ensure all commits follow [conventional commit format](https://conventionalcommits.org/)
+- **Conventional Commits**: Ensure all commits follow [conventional commit format](https://www.conventionalcommits.org/en/v1.0.0/)
 - **Monorepos**: Use `packageFiles` array for multiple packages
 - **CI Permissions**: Grant write access to contents/commits for automated releases
 
