@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadConfig } from '../lib/config.js';
+import { loadConfig, DEFAULT_CONFIG } from '../lib/config.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -10,14 +10,7 @@ describe('config', () => {
     describe('loadConfig', () => {
         it('should return default config when no config file exists', () => {
             const config = loadConfig('/non-existent');
-            expect(config).toEqual({
-                packageFiles: ['package.json'],
-                commitPrefix: 'chore: bump version',
-                tagPrefix: 'v',
-                push: false,
-                tag: false,
-                preset: 'node'
-            });
+            expect(config).toEqual(DEFAULT_CONFIG);
         });
 
         it('should merge user config with defaults', () => {
@@ -30,12 +23,9 @@ describe('config', () => {
 
             const config = loadConfig(path.join(__dirname, 'fixtures'));
             expect(config).toEqual({
+                ...DEFAULT_CONFIG,
                 packageFiles: ['package.json', 'package-lock.json'],
-                commitPrefix: 'chore: bump version',
-                tagPrefix: 'v',
-                push: false,
-                tag: false,
-                preset: 'node'
+                push: false
             });
 
             // Cleanup
@@ -43,37 +33,25 @@ describe('config', () => {
         });
 
         it('should handle empty config file gracefully', () => {
-            const testConfigPath = path.join(__dirname, 'fixtures', 'empty.json');
+
+
+            const testConfigPath = path.join(__dirname, 'fixtures', '.versionrc.json');
             fs.writeFileSync(testConfigPath, '');
 
             const config = loadConfig(path.join(__dirname, 'fixtures'));
-            expect(config).toEqual({
-                packageFiles: ['package.json'],
-                commitPrefix: 'chore: bump version',
-                tagPrefix: 'v',
-                push: false,
-                tag: false,
-                preset: 'node'
-            });
+            expect(config).toEqual(DEFAULT_CONFIG);
 
             // Cleanup
             fs.unlinkSync(testConfigPath);
         });
 
         it('should handle invalid JSON in config file', () => {
-            const testConfigPath = path.join(__dirname, 'fixtures', 'invalid.json');
+            const testConfigPath = path.join(__dirname, 'fixtures', '.versionrc.json');
             fs.writeFileSync(testConfigPath, '{ invalid json }');
 
             // Should not throw, should warn and use defaults
             const config = loadConfig(path.join(__dirname, 'fixtures'));
-            expect(config).toEqual({
-                packageFiles: ['package.json'],
-                commitPrefix: 'chore: bump version',
-                tagPrefix: 'v',
-                push: false,
-                tag: false,
-                preset: 'node'
-            });
+            expect(config).toEqual(DEFAULT_CONFIG);
 
             // Cleanup
             fs.unlinkSync(testConfigPath);
