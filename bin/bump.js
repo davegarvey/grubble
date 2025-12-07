@@ -89,7 +89,7 @@ try {
         // If no commits, bump is 'none'.
     }
 
-    const { bump, triggeringCommits } = analyseCommits(commits);
+    const { bump, triggeringCommits, unknownCommits } = analyseCommits(commits, config);
     log(`Version bump: ${bump.toUpperCase()}`);
 
     if (bump === 'none') {
@@ -106,6 +106,13 @@ try {
     log('Triggering commits:');
     if (!isRaw) {
         triggeringCommits.forEach(c => log(`  - ${c}`));
+    }
+
+    // Warn about unknown commit types
+    if (unknownCommits.length > 0 && !isRaw) {
+        log('Warning: The following commits have unknown or unconfigured types and did not trigger a version bump:');
+        unknownCommits.forEach(c => log(`  - ${c}`));
+        log('Consider configuring these types in .versionrc.json or using standard Conventional Commits types.');
     }
 
     const newVersion = bumpVersion(currentVersion, bump);
