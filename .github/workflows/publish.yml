@@ -4,16 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Skip actual publishing (for testing)'
-        required: false
-        default: 'false'
-        type: choice
-        options:
-        - 'true'
-        - 'false'
 
 permissions:
   id-token: write  # Required for OIDC
@@ -33,14 +23,7 @@ jobs:
       # Ensure npm 11.5.1 or later is installed
       - name: Update npm
         run: npm install -g npm@latest
-      - run: npm install
+      - run: npm ci
       - run: npm run build --if-present
       - run: npm test
-      - name: Publish to npm
-        if: github.event.inputs.dry_run != 'true'
-        run: npm publish
-      - name: Dry run summary
-        if: github.event.inputs.dry_run == 'true'
-        run: |
-          echo "🔍 DRY RUN MODE - No actual publishing performed"
-          echo "✅ All checks passed - publishing would succeed"
+      - run: npm publish
