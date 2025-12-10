@@ -1,8 +1,7 @@
 name: Version
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches: [ main ]
   workflow_dispatch:
     inputs:
@@ -17,7 +16,6 @@ on:
 
 jobs:
   version:
-    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write      # Required for pushing commits/tags
@@ -56,7 +54,7 @@ jobs:
 
     - name: Bump version
       if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_version_bump != 'true'
-      run: npx bump --push --tag
+      run: npx bump --push --tag --release-notes
 
     - name: Get final version
       id: final-version
