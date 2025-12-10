@@ -1,6 +1,6 @@
 {
   "name": "@davegarvey/bumper",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Automatic semantic versioning based on conventional commits, optimized for AI-generated commit messages",
   "type": "module",
   "bin": {
