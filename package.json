@@ -38,7 +38,6 @@
     "vitest": "^4.0.15"
   },
   "dependencies": {
-    "@davegarvey/bumper": "^0.1.0",
     "minimist": "^1.2.8"
   }
 }
