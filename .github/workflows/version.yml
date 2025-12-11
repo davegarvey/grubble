@@ -17,7 +17,6 @@ on:
 jobs:
   version:
     runs-on: ubuntu-latest
-    needs: [test]
     permissions:
       contents: write      # Required for pushing commits/tags
       pull-requests: read  # Required for PR info
