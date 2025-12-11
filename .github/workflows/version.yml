@@ -46,27 +46,6 @@ jobs:
     - name: Run tests
       run: cargo test
 
-    - name: Get current version
-      id: pre-bump
-      run: echo "version=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)" >> $GITHUB_OUTPUT
-
     - name: Bump version
       if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_version_bump != 'true'
       run: ./target/release/bump --push --tag --release-notes
-
-    - name: Get final version
-      id: final-version
-      run: echo "version=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)" >> $GITHUB_OUTPUT
-
-    - name: Version summary
-      run: |
-        echo "Version workflow completed."
-        if [ "${{ github.event.inputs.skip_version_bump }}" = "true" ]; then
-          echo "TEST MODE: Version bumping skipped. Current: ${{ steps.final-version.outputs.version }}"
-        else
-          if [ "${{ steps.pre-bump.outputs.version }}" != "${{ steps.final-version.outputs.version }}" ]; then
-            echo "Bumped from ${{ steps.pre-bump.outputs.version }} to ${{ steps.final-version.outputs.version }}. Tag created."
-          else
-            echo "No version change: ${{ steps.final-version.outputs.version }}"
-          fi
-        fi
