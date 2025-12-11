@@ -63,11 +63,11 @@ jobs:
           - target: x86_64-apple-darwin
             os: macos-latest
             name: bumper-macos-x86_64
-            cross: false
+            cross: true
           - target: aarch64-apple-darwin
             os: macos-latest
             name: bumper-macos-aarch64
-            cross: true
+            cross: false
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             name: bumper-windows-x86_64.exe
