@@ -1,6 +1,6 @@
 [package]
 name = "bumper"
-version = "2.4.0"
+version = "3.0.0"
 edition = "2021"
 authors = ["David Garvey"]
 description = "Automatic semantic versioning based on conventional commits, optimized for AI-generated commit messages"
