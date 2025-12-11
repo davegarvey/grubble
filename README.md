@@ -117,11 +117,13 @@ Bumper supports different versioning strategies depending on your project type:
 **Best for**: Rust applications and libraries
 
 **What it does**:
+
 - Updates the `version` field in `Cargo.toml`
 - Uses semantic versioning (major.minor.patch)
 - Integrates with Cargo's package management
 
 **Example usage**:
+
 ```bash
 bumper --preset rust --push --tag
 ```
@@ -133,11 +135,13 @@ bumper --preset rust --push --tag
 **Best for**: JavaScript/TypeScript applications and packages
 
 **What it does**:
+
 - Updates the `version` field in `package.json`
 - Updates `package-lock.json` if present
 - Compatible with npm/yarn ecosystem
 
 **Example usage**:
+
 ```bash
 bumper --preset node --push --tag
 ```
@@ -149,16 +153,28 @@ bumper --preset node --push --tag
 **Best for**: Projects that don't need file-based versioning
 
 **What it does**:
+
 - Only creates git tags for versioning
 - No files are modified
 - Tracks versions purely through git history
 
 **Example usage**:
+
 ```bash
 bumper --preset git --push --tag
 ```
 
 **When to use**: For projects that handle versioning differently (e.g., through CI/CD variables, Docker tags, or other systems). Useful for monorepos or projects with custom versioning schemes.
+
+### Custom Strategies
+
+The strategy system is designed to be extensible. You can implement custom strategies for other languages or build systems by:
+
+1. Creating a new strategy struct that implements the `Strategy` trait
+2. Adding it to the strategy loader in `src/strategy.rs`
+3. Using it via configuration: `"preset": "your-custom-strategy"`
+
+This allows bumper to work with Python projects, Go modules, Docker-based versioning, or any other versioning scheme your project requires.
 
 ### Best Practices
 
