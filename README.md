@@ -98,12 +98,12 @@ Create `.versionrc.json` in your project root:
 
 ### Configuration Options
 
-- **`packageFiles`**: Array of Cargo.toml files to update (default: `["Cargo.toml"]`)
+- **`packageFiles`**: Array of package files to update (default: `[]`)
 - **`commitPrefix`**: Prefix for version bump commits (default: `"chore: bump version"`)
 - **`tagPrefix`**: Prefix for git tags (default: `"v"`)
 - **`push`**: Whether to push commits/tags to remote (default: `false`)
 - **`tag`**: Whether to create git tags for versions (default: `false`)
-- **`preset`**: Versioning strategy to use (default: `"rust"`). Options:
+- **`preset`**: Versioning strategy to use (default: `"git"`). Options:
   - `"rust"`: Updates `Cargo.toml` version field
   - `"git"`: Tracks version via git tags only (no file updates)
   - `"node"`: Updates `package.json` version field
@@ -128,7 +128,7 @@ Bumper supports different versioning strategies depending on your project type:
 bumper --preset rust --push --tag
 ```
 
-**When to use**: Default choice for Rust projects. Automatically updates your Cargo.toml and works seamlessly with `cargo publish`.
+**When to use**: For Rust projects. Automatically updates your Cargo.toml and works seamlessly with `cargo publish`.
 
 ### Node.js Projects (`preset: "node"`)
 
@@ -146,7 +146,7 @@ bumper --preset rust --push --tag
 bumper --preset node --push --tag
 ```
 
-**When to use**: For Node.js projects that need version synchronization with npm registry publishing.
+**When to use**: For Node.js projects. Automatically updates your package.json and works seamlessly with npm/yarn publishing.
 
 ### Git-only Projects (`preset: "git"`)
 
@@ -164,7 +164,7 @@ bumper --preset node --push --tag
 bumper --preset git --push --tag
 ```
 
-**When to use**: For projects that handle versioning differently (e.g., through CI/CD variables, Docker tags, or other systems). Useful for monorepos or projects with custom versioning schemes.
+**When to use**: Default choice for projects that don't need file-based versioning. Useful for monorepos or projects with custom versioning schemes.
 
 ### Custom Strategies
 
@@ -262,7 +262,7 @@ jobs:
 
 1. Analyzes commits since last tag
 2. Determines version bump (major/minor/patch) based on conventional commits
-3. Updates Cargo.toml files
+3. Updates package files
 4. Creates git commit
 5. Optionally creates git tag
 6. Optionally pushes to remote
@@ -299,9 +299,9 @@ jobs:
 - **Solution**: Ensure `.versionrc.json` contains valid JSON
 - **Note**: Empty or invalid files fall back to defaults with a warning
 
-**Cargo.toml not found**
+**Package file not found**
 
-- **Solution**: Use `--package-files` to specify correct Cargo.toml paths
+- **Solution**: Use `--package-files` to specify correct file paths for your project type
 - **Check**: Verify file exists and contains valid `version` field
 
 ### Getting Help
