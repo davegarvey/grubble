@@ -4,13 +4,6 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
-  workflow_dispatch:
-    inputs:
-      test_release:
-        description: 'Test release workflow without creating a real release'
-        required: false
-        default: 'false'
-        type: boolean
 
 permissions:
   contents: write
@@ -23,7 +16,7 @@ jobs:
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.test_release != 'true'
+    if: github.event_name == 'push'
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       version: ${{ steps.get_version.outputs.version }}
@@ -34,7 +27,6 @@ jobs:
 
       - name: Create Release
         id: create_release
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.test_release != 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
@@ -124,7 +116,7 @@ jobs:
           "$hash  ${{ matrix.name }}.zip" | Out-File -Encoding ASCII ${{ matrix.name }}.zip.sha256
 
       - name: Upload Release Asset (Unix)
-        if: (matrix.os != 'windows-latest') && (github.event_name != 'workflow_dispatch' || github.event.inputs.test_release != 'true')
+        if: matrix.os != 'windows-latest'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
@@ -135,7 +127,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Release Asset (Windows)
-        if: (matrix.os == 'windows-latest') && (github.event_name != 'workflow_dispatch' || github.event.inputs.test_release != 'true')
+        if: matrix.os == 'windows-latest'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
@@ -145,50 +137,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  test-build:
-    name: Test Build
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.test_release == 'true' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-            name: bumper-linux-x86_64
-            cross: true
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            name: bumper-macos-x86_64
-            cross: false
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          target: ${{ matrix.target }}
-          cache: true
-
-      - name: Install cross-compilation tools
-        if: matrix.cross
-        run: |
-          cargo install cross --git https://github.com/cross-rs/cross
-
-      - name: Build (native)
-        if: ${{ !matrix.cross }}
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Build (cross)
-        if: matrix.cross
-        run: cross build --release --target ${{ matrix.target }}
-
-      - name: Verify binary
-        run: |
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            ls -la target/${{ matrix.target }}/release/bump.exe
-          else
-            ls -la target/${{ matrix.target }}/release/bump
-          fi
