@@ -121,6 +121,7 @@ Bumper supports different versioning strategies depending on your project type:
 - Updates the `version` field in `Cargo.toml`
 - Uses semantic versioning (major.minor.patch)
 - Integrates with Cargo's package management
+- **Note**: `Cargo.lock` is not updated by bumper. If needed, update it separately with `cargo update` or similar commands.
 
 **Example usage**:
 
