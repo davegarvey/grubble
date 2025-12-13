@@ -35,7 +35,7 @@ pub struct Config {
 }
 
 fn default_package_files() -> Vec<String> {
-    vec!["Cargo.toml".to_string()]
+    vec![]
 }
 
 fn default_commit_prefix() -> String {
@@ -47,7 +47,7 @@ fn default_tag_prefix() -> String {
 }
 
 fn default_preset() -> String {
-    "rust".to_string()
+    "git".to_string()
 }
 
 fn default_types() -> HashMap<String, String> {

@@ -20,6 +20,6 @@ pub fn load_strategy(config: &Config) -> Box<dyn Strategy> {
         "node" => Box::new(node::NodeStrategy::new(config.clone())),
         "git" => Box::new(git::GitStrategy::new(config.clone())),
         "rust" => Box::new(rust::RustStrategy::new(config.clone())),
-        _ => Box::new(node::NodeStrategy::new(config.clone())),
+        _ => Box::new(git::GitStrategy::new(config.clone())),
     }
 }
