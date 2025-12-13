@@ -23,6 +23,10 @@ struct Args {
     #[arg(short, long)]
     push: bool,
 
+    /// Suppress commit list output
+    #[arg(short, long)]
+    quiet: bool,
+
     /// Create git tag for the version
     #[arg(short, long)]
     tag: bool,
@@ -95,6 +99,8 @@ fn run() -> BumperResult<()> {
         config.release_notes = true;
     }
 
+    let quiet = args.quiet;
+
     let is_raw = args.raw;
 
     // Force settings for raw mode
@@ -123,6 +129,13 @@ fn run() -> BumperResult<()> {
     );
 
     let commits = git::get_commits_since_tag(last_tag.as_deref())?;
+
+    if !quiet {
+        log("Commits to analyse:", is_raw);
+        for commit in &commits {
+            log(&format!("  - {}", commit), is_raw);
+        }
+    }
 
     let release_notes_message = if config.release_notes && !commits.is_empty() {
         Some(

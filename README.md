@@ -68,6 +68,9 @@ bumper --tag
 # Raw mode (output only version, dry run)
 bumper --raw
 
+# Suppress commit list output
+bumper --quiet
+
 # With explicit options overrides
 bumper --tag --tag-prefix "release-v"
 bumper --commit-prefix "chore(release): bump"
