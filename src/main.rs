@@ -68,6 +68,14 @@ fn run() -> BumperResult<()> {
     if let Some(preset) = args.preset {
         config.preset = preset;
     }
+    if args.package_files.is_none() {
+        config.package_files = match config.preset.as_str() {
+            "rust" => vec!["Cargo.toml".to_string()],
+            "node" => vec!["package.json".to_string()],
+            "git" => vec![],
+            _ => vec!["package.json".to_string()],
+        };
+    }
     if let Some(tag_prefix) = args.tag_prefix {
         config.tag_prefix = tag_prefix;
     }
