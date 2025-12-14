@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "grubble"
-version = "3.1.0"
+version = "4.0.0"
 dependencies = [
  "anyhow",
  "clap",
