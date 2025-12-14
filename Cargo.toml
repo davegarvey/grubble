@@ -1,13 +1,13 @@
 [package]
-name = "bumper"
+name = "grubble"
 version = "3.1.0"
 edition = "2021"
 authors = ["David Garvey"]
 description = "Automatic semantic versioning based on conventional commits, optimized for AI-generated commit messages"
 license = "MIT"
-repository = "https://github.com/davegarvey/bumper"
-homepage = "https://github.com/davegarvey/bumper"
-documentation = "https://github.com/davegarvey/bumper#readme"
+repository = "https://github.com/davegarvey/grubble"
+homepage = "https://github.com/davegarvey/grubble"
+documentation = "https://github.com/davegarvey/grubble#readme"
 readme = "README.md"
 keywords = ["semver", "versioning", "conventional-commits", "automation", "ci-cd"]
 categories = ["command-line-utilities", "development-tools"]
@@ -21,7 +21,7 @@ pkg-fmt = "tgz"
 pkg-fmt = "zip"
 
 [[bin]]
-name = "bump"
+name = "grubble"
 path = "src/main.rs"
 
 [dependencies]

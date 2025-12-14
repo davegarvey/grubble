@@ -1,4 +1,4 @@
-name: 'Bumper - Semantic Version Bump'
+name: 'Grubble - Semantic Version Bump'
 description: 'Automatically bump semantic version based on conventional commits'
 author: 'David Garvey'
 
@@ -63,9 +63,9 @@ runs:
         
         if [ "$OS" = "Linux" ]; then
           if [ "$ARCH" = "X64" ]; then
-            BINARY="bumper-linux-x86_64"
+            BINARY="grubble-linux-x86_64"
           elif [ "$ARCH" = "ARM64" ]; then
-            BINARY="bumper-linux-aarch64"
+            BINARY="grubble-linux-aarch64"
           else
             echo "::error::Unsupported architecture: $ARCH"
             exit 1
@@ -73,9 +73,9 @@ runs:
           ARCHIVE="${BINARY}.tar.gz"
         elif [ "$OS" = "macOS" ]; then
           if [ "$ARCH" = "X64" ]; then
-            BINARY="bumper-macos-x86_64"
+            BINARY="grubble-macos-x86_64"
           elif [ "$ARCH" = "ARM64" ]; then
-            BINARY="bumper-macos-aarch64"
+            BINARY="grubble-macos-aarch64"
           else
             echo "::error::Unsupported architecture: $ARCH"
             exit 1
@@ -83,7 +83,7 @@ runs:
           ARCHIVE="${BINARY}.tar.gz"
         elif [ "$OS" = "Windows" ]; then
           if [ "$ARCH" = "X64" ]; then
-            BINARY="bumper-windows-x86_64.exe"
+            BINARY="grubble-windows-x86_64.exe"
           else
             echo "::error::Unsupported architecture: $ARCH"
             exit 1
@@ -102,7 +102,7 @@ runs:
       id: release
       shell: bash
       run: |
-        RELEASE_URL="https://api.github.com/repos/davegarvey/bumper/releases/latest"
+        RELEASE_URL="https://api.github.com/repos/davegarvey/grubble/releases/latest"
         RELEASE_DATA=$(curl -s "$RELEASE_URL")
         VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
         
@@ -158,7 +158,7 @@ runs:
       shell: bash
       run: |
         tar xzf "${{ steps.detect.outputs.archive }}"
-        chmod +x bump
+        chmod +x grubble
         echo "Binary extracted and made executable"
 
     - name: Extract binary (Windows)
@@ -173,9 +173,9 @@ runs:
       shell: bash
       run: |
         if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-          CURRENT_VERSION=$(./bump.exe --raw 2>/dev/null || echo "0.0.0")
+          CURRENT_VERSION=$(./grubble.exe --raw 2>/dev/null || echo "0.0.0")
         else
-          CURRENT_VERSION=$(./bump --raw 2>/dev/null || echo "0.0.0")
+          CURRENT_VERSION=$(./grubble --raw 2>/dev/null || echo "0.0.0")
         fi
         echo "previous_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
         echo "Current version: $CURRENT_VERSION"
@@ -218,16 +218,16 @@ runs:
           ARGS="$ARGS --package-files ${{ inputs.package-files }}"
         fi
         
-        echo "Running: bump $ARGS"
+        echo "Running: grubble $ARGS"
         
         if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-          OUTPUT=$(./bump.exe $ARGS 2>&1) || {
-            echo "::error::Bump command failed: $OUTPUT"
+          OUTPUT=$(./grubble.exe $ARGS 2>&1) || {
+            echo "::error::Grubble command failed: $OUTPUT"
             exit 1
           }
         else
-          OUTPUT=$(./bump $ARGS 2>&1) || {
-            echo "::error::Bump command failed: $OUTPUT"
+          OUTPUT=$(./grubble $ARGS 2>&1) || {
+            echo "::error::Grubble command failed: $OUTPUT"
             exit 1
           }
         fi
@@ -236,9 +236,9 @@ runs:
         
         # Get the new version
         if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-          NEW_VERSION=$(./bump.exe --raw 2>/dev/null || echo "${{ steps.current.outputs.previous_version }}")
+          NEW_VERSION=$(./grubble.exe --raw 2>/dev/null || echo "${{ steps.current.outputs.previous_version }}")
         else
-          NEW_VERSION=$(./bump --raw 2>/dev/null || echo "${{ steps.current.outputs.previous_version }}")
+          NEW_VERSION=$(./grubble --raw 2>/dev/null || echo "${{ steps.current.outputs.previous_version }}")
         fi
         
         echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT

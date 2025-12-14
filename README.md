@@ -1,8 +1,8 @@
-# Bumper
+# Grubble
 
-[![CI](https://github.com/davegarvey/bumper/actions/workflows/ci.yml/badge.svg)](https://github.com/davegarvey/bumper/actions/workflows/ci.yml)
-[![Release](https://github.com/davegarvey/bumper/actions/workflows/release.yml/badge.svg)](https://github.com/davegarvey/bumper/actions/workflows/release.yml)
-[![Version](https://img.shields.io/github/v/release/davegarvey/bumper)](https://github.com/davegarvey/bumper/releases)
+[![CI](https://github.com/davegarvey/grubble/actions/workflows/ci.yml/badge.svg)](https://github.com/davegarvey/grubble/actions/workflows/ci.yml)
+[![Release](https://github.com/davegarvey/grubble/actions/workflows/release.yml/badge.svg)](https://github.com/davegarvey/grubble/actions/workflows/release.yml)
+[![Version](https://img.shields.io/github/v/release/davegarvey/grubble)](https://github.com/davegarvey/grubble/releases)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange)](https://www.rust-lang.org/)
 
 Automatic semantic versioning based on conventional commits, optimised for AI-generated commit messages.
@@ -11,75 +11,75 @@ Automatic semantic versioning based on conventional commits, optimised for AI-ge
 
 ### Pre-built Binaries (Recommended)
 
-Download from [GitHub Releases](https://github.com/davegarvey/bumper/releases):
+Download from [GitHub Releases](https://github.com/davegarvey/grubble/releases):
 
 ```bash
 # Linux x86_64
-curl -L https://github.com/davegarvey/bumper/releases/download/v2.3.1/bumper-linux-x86_64.tar.gz | tar xz
-sudo mv bumper /usr/local/bin/
+curl -L https://github.com/davegarvey/grubble/releases/download/v3.1.0/grubble-linux-x86_64.tar.gz | tar xz
+sudo mv grubble /usr/local/bin/
 
 # macOS Intel
-curl -L https://github.com/davegarvey/bumper/releases/download/v2.3.1/bumper-macos-x86_64.tar.gz | tar xz
-sudo mv bumper /usr/local/bin/
+curl -L https://github.com/davegarvey/grubble/releases/download/v3.1.0/grubble-macos-x86_64.tar.gz | tar xz
+sudo mv grubble /usr/local/bin/
 
 # macOS Apple Silicon
-curl -L https://github.com/davegarvey/bumper/releases/download/v2.3.1/bumper-macos-aarch64.tar.gz | tar xz
-sudo mv bumper /usr/local/bin/
+curl -L https://github.com/davegarvey/grubble/releases/download/v3.1.0/grubble-macos-aarch64.tar.gz | tar xz
+sudo mv grubble /usr/local/bin/
 
 # Windows
-curl -L https://github.com/davegarvey/bumper/releases/download/v2.3.1/bumper-windows-x86_64.zip -o bumper.zip
-unzip bumper.zip
-# Add to PATH
+curl -L https://github.com/davegarvey/grubble/releases/download/v3.1.0/grubble-windows-x86_64.zip -o grubble.zip
+unzip grubble.zip
+# Add grubble.exe to PATH
 ```
 
 ### Cargo Install
 
 ```bash
-cargo install bumper
+cargo install grubble
 ```
 
 ### GitHub Action
 
 ```yaml
-uses: davegarvey/bumper@v3.0.0
+uses: davegarvey/grubble@v3.1.0
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/davegarvey/bumper.git
-cd bumper
+git clone https://github.com/davegarvey/grubble.git
+cd grubble
 cargo build --release
-# Binary available at target/release/bumper
+# Binary available at target/release/grubble
 ```
 
 ## Usage
 
 ```bash
 # Run in your project root
-bumper
+grubble
 
 # Push to remote
-bumper --push
+grubble --push
 
 # Create git tag
-bumper --tag
+grubble --tag
 
 # Raw mode (output only version, dry run)
-bumper --raw
+grubble --raw
 
 # Suppress commit list output
-bumper --quiet
+grubble --quiet
 
 # With explicit options overrides
-bumper --tag --tag-prefix "release-v"
-bumper --commit-prefix "chore(release): bump"
-bumper --preset git --tag
-bumper --release-notes --tag
-bumper --package-files "Cargo.toml,client/Cargo.toml"
+grubble --tag --tag-prefix "release-v"
+grubble --commit-prefix "chore(release): bump"
+grubble --preset git --tag
+grubble --release-notes --tag
+grubble --package-files "Cargo.toml,client/Cargo.toml"
 
 # Show help
-bumper --help
+grubble --help
 ```
 
 ## Configuration
@@ -209,7 +209,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    - uses: davegarvey/bumper@v3.0.0
+    - uses: davegarvey/grubble@v3.0.0
       with:
         push: true
         tag: true
@@ -249,10 +249,10 @@ jobs:
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-    - name: Install bumper
-      run: cargo install bumper
+    - name: Install grubble
+      run: cargo install grubble
     - name: Bump version and release
-      run: bumper --push --tag
+      run: grubble --push --tag
 ```
 
 ### CI Best Practices
@@ -287,9 +287,9 @@ jobs:
 - **Solution**: Configure git identity in CI before running bumper
 - **Example**: Add git config step as shown in CI workflow
 
-**"bumper: command not found"**
+**"grubble: command not found"**
 
-- **Solution**: Install bumper before running: `cargo install bumper`
+- **Solution**: Install grubble before running: `cargo install grubble`
 - **Why**: Ensure the binary is in PATH or use full path
 
 **No version bump on merge**
@@ -312,9 +312,9 @@ jobs:
 
 - Check commit format with conventional commits specification
 - Verify CI permissions and branch protection rules
-- Test locally with `bumper` for debugging (pushing is disabled by default)
+- Test locally with `grubble` for debugging (pushing is disabled by default)
 - Run `cargo test` to verify your project setup
 
 ## For AI Users
 
-This tool is optimised for AI-generated commit messages that follow conventional commit format. See [.github/prompts/sc.prompt.md](.github/prompts/sc.prompt.md) for an example prompt that generates commits compatible with bumper.
+This tool is optimised for AI-generated commit messages that follow conventional commit format. See [.github/prompts/sc.prompt.md](.github/prompts/sc.prompt.md) for an example prompt that generates commits compatible with grubble.
