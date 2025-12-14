@@ -15,7 +15,6 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: crates-io  # Optional: use an environment for additional protection
     steps:
       - uses: actions/checkout@v4
 
