@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (e.g., v4.0.0)'
+        description: 'Tag to release (e.g., 4.0.0 or v4.0.0)'
         required: true
         type: string
 
@@ -34,7 +34,8 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
           else
-            echo "version=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+            TAG="${{ github.event.inputs.tag }}"
+            echo "version=${TAG#v}" >> $GITHUB_OUTPUT
           fi
 
       - name: Create Release
