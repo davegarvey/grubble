@@ -15,19 +15,19 @@ Download from [GitHub Releases](https://github.com/davegarvey/grubble/releases):
 
 ```bash
 # Linux x86_64
-curl -L https://github.com/davegarvey/grubble/releases/download/v3.1.0/grubble-linux-x86_64.tar.gz | tar xz
+curl -L https://github.com/davegarvey/grubble/releases/download/v4.0.0/grubble-linux-x86_64.tar.gz | tar xz
 sudo mv grubble /usr/local/bin/
 
 # macOS Intel
-curl -L https://github.com/davegarvey/grubble/releases/download/v3.1.0/grubble-macos-x86_64.tar.gz | tar xz
+curl -L https://github.com/davegarvey/grubble/releases/download/v4.0.0/grubble-macos-x86_64.tar.gz | tar xz
 sudo mv grubble /usr/local/bin/
 
 # macOS Apple Silicon
-curl -L https://github.com/davegarvey/grubble/releases/download/v3.1.0/grubble-macos-aarch64.tar.gz | tar xz
+curl -L https://github.com/davegarvey/grubble/releases/download/v4.0.0/grubble-macos-aarch64.tar.gz | tar xz
 sudo mv grubble /usr/local/bin/
 
 # Windows
-curl -L https://github.com/davegarvey/grubble/releases/download/v3.1.0/grubble-windows-x86_64.zip -o grubble.zip
+curl -L https://github.com/davegarvey/grubble/releases/download/v4.0.0/grubble-windows-x86_64.zip -o grubble.zip
 unzip grubble.zip
 # Add grubble.exe to PATH
 ```
@@ -41,7 +41,7 @@ cargo install grubble
 ### GitHub Action
 
 ```yaml
-uses: davegarvey/grubble@v3.1.0
+uses: davegarvey/grubble@v4.0.0
 ```
 
 ### From Source
@@ -84,7 +84,7 @@ grubble --help
 
 ## Configuration
 
-You can use a file-based configuration for Bumper instead of CLI arguments.
+You can use a file-based configuration for Grubble instead of CLI arguments.
 
 Create `.versionrc.json` in your project root:
 
@@ -113,7 +113,7 @@ Create `.versionrc.json` in your project root:
 
 ## Versioning Strategies
 
-Bumper supports different versioning strategies depending on your project type:
+Grubble supports different versioning strategies depending on your project type:
 
 ### Rust Projects (`preset: "rust"`)
 
@@ -124,12 +124,12 @@ Bumper supports different versioning strategies depending on your project type:
 - Updates the `version` field in `Cargo.toml`
 - Uses semantic versioning (major.minor.patch)
 - Integrates with Cargo's package management
-- **Note**: `Cargo.lock` is not updated by bumper. If needed, update it separately with `cargo update` or similar commands.
+- **Note**: `Cargo.lock` is not updated by grubble. If needed, update it separately with `cargo update` or similar commands.
 
 **Example usage**:
 
 ```bash
-bumper --preset rust --push --tag
+grubble --preset rust --push --tag
 ```
 
 **When to use**: For Rust projects. Automatically updates your Cargo.toml and works seamlessly with `cargo publish`.
@@ -147,7 +147,7 @@ bumper --preset rust --push --tag
 **Example usage**:
 
 ```bash
-bumper --preset node --push --tag
+grubble --preset node --push --tag
 ```
 
 **When to use**: For Node.js projects. Automatically updates your package.json and works seamlessly with npm/yarn publishing.
@@ -165,7 +165,7 @@ bumper --preset node --push --tag
 **Example usage**:
 
 ```bash
-bumper --preset git --push --tag
+grubble --preset git --push --tag
 ```
 
 **When to use**: Default choice for projects that don't need file-based versioning. Useful for monorepos or projects with custom versioning schemes.
@@ -178,7 +178,7 @@ The strategy system is designed to be extensible. You can implement custom strat
 2. Adding it to the strategy loader in `src/strategy.rs`
 3. Using it via configuration: `"preset": "your-custom-strategy"`
 
-This allows bumper to work with Python projects, Go modules, Docker-based versioning, or any other versioning scheme your project requires.
+This allows grubble to work with Python projects, Go modules, Docker-based versioning, or any other versioning scheme your project requires.
 
 ### Best Practices
 
@@ -284,7 +284,7 @@ jobs:
 
 **"Author identity unknown"**
 
-- **Solution**: Configure git identity in CI before running bumper
+- **Solution**: Configure git identity in CI before running grubble
 - **Example**: Add git config step as shown in CI workflow
 
 **"grubble: command not found"**
