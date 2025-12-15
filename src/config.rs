@@ -61,7 +61,7 @@ fn default_git_user_name() -> String {
 }
 
 fn default_git_user_email() -> String {
-    "grubble@example.com".to_string()
+    "grubble@users.noreply.github.com".to_string()
 }
 
 fn default_types() -> HashMap<String, String> {
