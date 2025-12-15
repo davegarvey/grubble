@@ -57,11 +57,11 @@ fn default_preset() -> String {
 }
 
 fn default_git_user_name() -> String {
-    "Grubble".to_string()
+    "grubble-bot".to_string()
 }
 
 fn default_git_user_email() -> String {
-    "grubble@users.noreply.github.com".to_string()
+    "grubble-bot@noreply.local".to_string()
 }
 
 fn default_types() -> HashMap<String, String> {

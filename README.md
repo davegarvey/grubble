@@ -124,9 +124,9 @@ Alternatively, create `.versionrc.json` in your project root:
 - **`tagPrefix`**: Prefix for git tags (default: `"v"`)
 - **`push`**: Whether to push commits/tags to remote (default: `false`)
 - **`tag`**: Whether to create git tags for versions (default: `false`)
-- **`gitUserName`**: Git user name for commits (default: `"Grubble"`)
-- **`gitUserEmail`**: Git user email for commits (default: `"grubble@users.noreply.github.com"`)
-  - *Note: These are only set if no local git config exists for the repository*
+- **`gitUserName`**: Git user name for commits (default: `"grubble-bot"`)
+- **`gitUserEmail`**: Git user email for commits (default: `"grubble-bot@noreply.local"`)
+  - *Note: These values are only used when no local git user.name/email configuration exists in the repository. If git config is already set locally, these values are ignored. For CI/CD environments, configure these to match your platform's bot user (e.g., GitHub Actions bot, GitLab CI bot, etc.).*
 - **`preset`**: Versioning strategy to use (default: `"git"`). Options:
   - `"rust"`: Updates `Cargo.toml` version field
   - `"git"`: Tracks version via git tags only (no file updates)
