@@ -119,7 +119,7 @@ fn run() -> BumperResult<()> {
 
     let strategy = load_strategy(&config);
 
-    let current_version = strategy.get_current_version()?;
+    let mut current_version = strategy.get_current_version()?;
     log(&format!("Current version: {}", current_version), is_raw);
 
     let last_tag = git::get_last_tag()?;
@@ -127,6 +127,31 @@ fn run() -> BumperResult<()> {
         &format!("Last tag: {}", last_tag.as_deref().unwrap_or("none")),
         is_raw,
     );
+
+    let last_tag_version = git::get_last_tag_version(&config)?;
+
+    // Sync package version if behind latest tag
+    if let Some(tag_ver) = last_tag_version {
+        if config.preset != "git" && current_version < tag_ver {
+            log(
+                &format!(
+                    "Package version {} is behind latest tag version {}, syncing...",
+                    current_version, tag_ver
+                ),
+                is_raw,
+            );
+            let updated_files = strategy.update_files(&tag_ver)?;
+            if !updated_files.is_empty() {
+                git::commit_changes(
+                    &format!("v{}", tag_ver),
+                    &updated_files,
+                    "chore: sync package version",
+                )?;
+                log(&format!("Synced package to version {}", tag_ver), is_raw);
+            }
+            current_version = tag_ver;
+        }
+    }
 
     let commits = git::get_commits_since_tag(last_tag.as_deref())?;
 

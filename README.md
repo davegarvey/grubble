@@ -180,12 +180,33 @@ The strategy system is designed to be extensible. You can implement custom strat
 
 This allows grubble to work with Python projects, Go modules, Docker-based versioning, or any other versioning scheme your project requires.
 
+### Package Version Syncing
+
+When switching from the `git` strategy (tag-only) to file-based strategies like `node` or `rust`, or if package files are outdated compared to existing tags, Grubble automatically syncs the package versions:
+
+- Compares the current package file version against the latest git tag
+- If the package version is behind, updates the package files to match the tag version
+- Commits the sync with a descriptive message (e.g., "chore: sync package version to v1.2.3")
+- Then proceeds with normal versioning logic based on recent commits
+
+This ensures version consistency across strategies and prevents conflicts when creating new tags.
+
 ### Best Practices
 
 - **Branch Protection**: Protect your main branch and require CI checks to pass
 - **Conventional Commits**: Ensure all commits follow [conventional commit format](https://www.conventionalcommits.org/en/v1.0.0/)
 - **Monorepos**: Use `packageFiles` array for multiple packages
 - **CI Permissions**: Grant write access to contents/commits for automated releases
+
+### Local Git Hooks
+
+Run once to enable the shared hooks path:
+
+```bash
+git config core.hooksPath scripts/hooks
+```
+
+The pre-commit hook runs `cargo fmt --all` (fixes formatting) and `cargo clippy --all-targets --all-features -- -D warnings` so commits fail early if code would break CI checks. You can temporarily skip steps with `SKIP_FMT=1` or `SKIP_CLIPPY=1`, and opt into running tests with `RUN_TESTS=1`.
 
 ## GitHub Actions
 
@@ -264,12 +285,13 @@ jobs:
 
 ## How It Works
 
-1. Analyzes commits since last tag
-2. Determines version bump (major/minor/patch) based on conventional commits
-3. Updates package files
-4. Creates git commit
-5. Optionally creates git tag
-6. Optionally pushes to remote
+1. Syncs package versions if behind latest tag (for file-based strategies)
+2. Analyzes commits since last tag
+3. Determines version bump (major/minor/patch) based on conventional commits
+4. Updates package files
+5. Creates git commit
+6. Optionally creates git tag
+7. Optionally pushes to remote
 
 ## Commit Types
 

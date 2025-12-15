@@ -2,7 +2,7 @@ use crate::analyser::BumpType;
 use crate::error::{BumperError, BumperResult};
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {
     pub major: u32,
     pub minor: u32,

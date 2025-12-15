@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run from repo root so cargo and git paths resolve predictably.
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "cargo not found in PATH; skipping hook." >&2
+  exit 0
+fi
+
+run() {
+  echo "→ $*"
+  "$@"
+}
+
+if [[ "${SKIP_FMT:-0}" != "1" ]]; then
+  run cargo fmt --all
+fi
+
+if [[ "${SKIP_CLIPPY:-0}" != "1" ]]; then
+  run cargo clippy --all-targets --all-features -- -D warnings
+fi
+
+if [[ "${RUN_TESTS:-0}" == "1" ]]; then
+  run cargo test --all-features
+fi

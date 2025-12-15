@@ -1,4 +1,6 @@
+use crate::config::Config;
 use crate::error::{BumperError, BumperResult};
+use crate::versioner::Version;
 use std::process::Command;
 
 fn run_git_command(args: &[&str]) -> BumperResult<String> {
@@ -32,6 +34,23 @@ pub fn get_last_tag() -> BumperResult<Option<String>> {
         Ok(tag) if !tag.is_empty() => Ok(Some(tag)),
         Ok(_) => Ok(None),
         Err(_) => Ok(None), // No tags exist yet
+    }
+}
+
+pub fn get_last_tag_version(config: &Config) -> BumperResult<Option<Version>> {
+    let last_tag = get_last_tag()?;
+
+    if let Some(tag) = last_tag {
+        let prefix = &config.tag_prefix;
+        let version_str = if tag.starts_with(prefix) {
+            &tag[prefix.len()..]
+        } else {
+            &tag
+        };
+
+        Ok(Some(Version::parse(version_str)?))
+    } else {
+        Ok(None)
     }
 }
 
