@@ -123,7 +123,7 @@ runs:
       shell: bash
       run: |
         RELEASE_URL="https://api.github.com/repos/davegarvey/grubble/releases/latest"
-        RELEASE_DATA=$(curl -s "$RELEASE_URL")
+        RELEASE_DATA=$(curl -sS "$RELEASE_URL")
         VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
         
         if [ "$VERSION" = "null" ] || [ -z "$VERSION" ]; then
@@ -137,22 +137,24 @@ runs:
     - name: Download binary
       shell: bash
       run: |
+        echo "::group::Download grubble binary"
         DOWNLOAD_URL="https://github.com/davegarvey/grubble/releases/download/${{ steps.release.outputs.version }}/${{ steps.detect.outputs.archive }}"
-        echo "Downloading from: $DOWNLOAD_URL"
         
-        if ! curl -L -f -o "${{ steps.detect.outputs.archive }}" "$DOWNLOAD_URL"; then
+        if ! curl -sSL -f -o "${{ steps.detect.outputs.archive }}" "$DOWNLOAD_URL"; then
           echo "::error::Failed to download binary from $DOWNLOAD_URL"
           exit 1
         fi
         
-        echo "Successfully downloaded ${{ steps.detect.outputs.archive }}"
+        echo "Downloaded ${{ steps.detect.outputs.archive }}"
+        echo "::endgroup::"
 
     - name: Verify checksum
       shell: bash
       run: |
+        echo "::group::Verify checksum"
         CHECKSUM_URL="https://github.com/davegarvey/grubble/releases/download/${{ steps.release.outputs.version }}/${{ steps.detect.outputs.archive }}.sha256"
         
-        if ! curl -L -f -o "${{ steps.detect.outputs.archive }}.sha256" "$CHECKSUM_URL"; then
+        if ! curl -sSL -f -o "${{ steps.detect.outputs.archive }}.sha256" "$CHECKSUM_URL"; then
           echo "::warning::Failed to download checksum file, skipping verification"
         else
           if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
@@ -165,28 +167,33 @@ runs:
             fi
           else
             # Unix verification
-            if ! shasum -a 256 -c "${{ steps.detect.outputs.archive }}.sha256"; then
+            if ! shasum -a 256 -c "${{ steps.detect.outputs.archive }}.sha256" 2>&1 | grep -v "OK$"; then
               echo "::error::Checksum verification failed"
               exit 1
             fi
           fi
-          echo "Checksum verification passed"
+          echo "✓ Checksum verified"
         fi
+        echo "::endgroup::"
 
     - name: Extract binary (Unix)
       if: steps.detect.outputs.os != 'Windows'
       shell: bash
       run: |
+        echo "::group::Extract binary"
         tar xzf "${{ steps.detect.outputs.archive }}"
         chmod +x grubble
-        echo "Binary extracted and made executable"
+        echo "✓ Binary ready"
+        echo "::endgroup::"
 
     - name: Extract binary (Windows)
       if: steps.detect.outputs.os == 'Windows'
       shell: pwsh
       run: |
+        Write-Output "::group::Extract binary"
         Expand-Archive -Path "${{ steps.detect.outputs.archive }}" -DestinationPath . -Force
-        Write-Output "Binary extracted"
+        Write-Output "✓ Binary ready"
+        Write-Output "::endgroup::"
 
     - name: Get current version
       id: current
@@ -198,7 +205,6 @@ runs:
           CURRENT_VERSION=$(./grubble --raw 2>/dev/null || echo "0.0.0")
         fi
         echo "previous_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-        echo "Current version: $CURRENT_VERSION"
 
     - name: Run bump
       id: bump
@@ -258,8 +264,6 @@ runs:
           ARGS="$ARGS --update-minor-tag"
         fi
         
-        echo "Running: grubble $ARGS"
-        
         if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
           OUTPUT=$(./grubble.exe $ARGS 2>&1) || {
             echo "::error::Grubble command failed: $OUTPUT"
@@ -282,7 +286,6 @@ runs:
         fi
         
         echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-        echo "New version: $NEW_VERSION"
         
         # Determine bump type
         PREV="${{ steps.current.outputs.previous_version }}"
