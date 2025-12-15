@@ -48,6 +48,20 @@ jobs:
           echo "::add-mask::$TOKEN"
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
+      - name: Inspect OIDC token claims (debug)
+        if: inputs.dry-run == false
+        run: |
+          TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://crates.io" | jq -r '.value')
+          IFS=. read -r HEADER PAYLOAD SIGNATURE <<< "$TOKEN"
+          PAD=$(( (4 - ${#PAYLOAD} % 4) % 4 ))
+          PAYLOAD="$PAYLOAD$(printf '=%.0s' $(seq 1 $PAD))"
+          CLAIMS=$(echo "$PAYLOAD" | tr '_-' '/+' | base64 -d 2>/dev/null || echo '{}')
+          echo "OIDC aud:" $(echo "$CLAIMS" | jq -r '.aud // empty')
+          echo "OIDC sub:" $(echo "$CLAIMS" | jq -r '.sub // empty')
+          echo "OIDC iss:" $(echo "$CLAIMS" | jq -r '.iss // empty')
+          echo "OIDC exp:" $(echo "$CLAIMS" | jq -r '.exp // empty')
+
       - name: Publish to crates.io
         if: inputs.dry-run == false
         env:
