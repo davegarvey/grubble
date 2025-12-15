@@ -143,9 +143,9 @@ Grubble supports different versioning strategies depending on your project type:
 **What it does**:
 
 - Updates the `version` field in `Cargo.toml`
+- Automatically updates `Cargo.lock` if present (recommended for binary crates)
 - Uses semantic versioning (major.minor.patch)
 - Integrates with Cargo's package management
-- **Note**: `Cargo.lock` is not updated by grubble. If needed, update it separately with `cargo update` or similar commands.
 
 **Example usage**:
 
