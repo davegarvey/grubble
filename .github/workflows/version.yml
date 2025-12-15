@@ -17,9 +17,15 @@ on:
         - 'true'
         - 'false'
 
+# Prevent concurrent version bumps
+concurrency:
+  group: version-bump
+  cancel-in-progress: false
+
 jobs:
   version:
     runs-on: ubuntu-latest
+    # Only run if CI succeeded or manually triggered
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     outputs:
       version_changed: ${{ steps.check_version.outputs.changed }}
