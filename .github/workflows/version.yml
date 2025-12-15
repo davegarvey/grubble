@@ -21,6 +21,9 @@ jobs:
   version:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    outputs:
+      version_changed: ${{ steps.check_version.outputs.changed }}
+      new_version: ${{ steps.check_version.outputs.version }}
     permissions:
       contents: write      # Required for pushing commits/tags
       pull-requests: read  # Required for PR info
@@ -34,6 +37,7 @@ jobs:
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         toolchain: stable
+        cache: true
 
     - name: Configure Git
       run: |
@@ -43,9 +47,28 @@ jobs:
     - name: Build grubble
       run: cargo build --release
 
-    - name: Run tests
-      run: cargo test
+    - name: Get version before bump
+      id: version_before
+      run: |
+        VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
 
     - name: Bump version
       if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_version_bump != 'true'
       run: ./target/release/grubble --push --tag --release-notes
+
+    - name: Check version change
+      id: check_version
+      run: |
+        VERSION_AFTER=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+        VERSION_BEFORE="${{ steps.version_before.outputs.version }}"
+        
+        if [ "$VERSION_AFTER" != "$VERSION_BEFORE" ]; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
+          echo "Version changed: $VERSION_BEFORE -> $VERSION_AFTER"
+        else
+          echo "changed=false" >> $GITHUB_OUTPUT
+          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
+          echo "Version unchanged: $VERSION_AFTER"
+        fi
