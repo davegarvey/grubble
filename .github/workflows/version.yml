@@ -72,7 +72,8 @@ jobs:
           --preset rust \
           --push \
           --tag \
-          --release-notes
+          --release-notes \
+          --update-major-tag
 
     - name: Check version change
       id: check_version

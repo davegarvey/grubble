@@ -41,7 +41,7 @@ cargo install grubble
 ### GitHub Action
 
 ```yaml
-uses: davegarvey/grubble@v4.0.0
+uses: davegarvey/grubble@v4
 ```
 
 ### From Source
@@ -260,6 +260,8 @@ grubble --tag --push --update-major-tag --update-minor-tag
     update-major-tag: true
 ```
 
+*Note: Grubble itself uses major version tag tracking in its release workflow, so you can reference `uses: davegarvey/grubble@v4` to automatically get the latest v4.x.x release.*
+
 **Configuration file (.versionrc.json):**
 
 ```json
@@ -340,11 +342,11 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    - uses: davegarvey/grubble@v3.0.0
+    - uses: davegarvey/grubble@v4
       with:
         push: true
         tag: true
-        update-major-tag: true  # Maintain v3 pointing to latest v3.x.x
+        update-major-tag: true  # Maintain v4 pointing to latest v4.x.x
 ```
 
 ### Alternative: Manual Setup
