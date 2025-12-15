@@ -41,7 +41,7 @@ cargo install grubble
 ### GitHub Action
 
 ```yaml
-uses: davegarvey/grubble@v4.0.0
+uses: davegarvey/grubble@v4
 ```
 
 ### From Source
@@ -78,6 +78,12 @@ grubble --preset git --tag
 grubble --release-notes --tag
 grubble --package-files "Cargo.toml,client/Cargo.toml"
 grubble --git-user-name "My Name" --git-user-email "my@email.com"
+
+# Update major version tag (e.g., v4 -> v4.x.x)
+grubble --tag --update-major-tag
+
+# Update both major and minor version tags
+grubble --tag --update-major-tag --update-minor-tag --push
 
 # Show help
 grubble --help
@@ -127,6 +133,8 @@ Alternatively, create `.versionrc.json` in your project root:
 - **`tagPrefix`**: Prefix for git tags (default: `"v"`)
 - **`push`**: Whether to push commits/tags to remote (default: `false`)
 - **`tag`**: Whether to create git tags for versions (default: `false`)
+- **`updateMajorTag`**: Update major version tag (e.g., v4 pointing to latest v4.x.x) (default: `false`)
+- **`updateMinorTag`**: Update minor version tag (e.g., v4.1 pointing to latest v4.1.x) (default: `false`)
 - **`gitUserName`**: Git user name for commits (default: `"grubble-bot"`)
 - **`gitUserEmail`**: Git user email for commits (default: `"grubble-bot@noreply.local"`)
   - *Note: These values are only used when no local git user.name/email configuration exists in the repository. If git config is already set locally, these values are ignored. For CI/CD environments, configure these to match your platform's bot user (e.g., GitHub Actions bot, GitLab CI bot, etc.).*
@@ -217,6 +225,84 @@ When switching from the `git` strategy (tag-only) to file-based strategies like 
 
 This ensures version consistency across strategies and prevents conflicts when creating new tags.
 
+## Major/Minor Version Tag Tracking
+
+**Best for**: Maintainers of GitHub Actions, reusable workflows, or libraries where users reference by major version
+
+### What It Does
+
+When enabled, Grubble maintains "floating" major (and optionally minor) version tags that always point to the latest release in that version range:
+
+- **Major tag** (e.g., `v4`) → always points to latest `v4.x.x` release
+- **Minor tag** (e.g., `v4.1`) → always points to latest `v4.1.x` release
+
+This follows GitHub Actions best practices where users can reference `uses: owner/repo@v4` to automatically get the latest v4 release without manually updating to each new patch version.
+
+### Usage
+
+**CLI:**
+
+```bash
+# Update major version tag only
+grubble --tag --push --update-major-tag
+
+# Update both major and minor version tags
+grubble --tag --push --update-major-tag --update-minor-tag
+```
+
+**GitHub Action:**
+
+```yaml
+- uses: davegarvey/grubble@v4
+  with:
+    tag: true
+    push: true
+    update-major-tag: true
+```
+
+*Note: Grubble itself uses major version tag tracking in its release workflow, so you can reference `uses: davegarvey/grubble@v4` to automatically get the latest v4.x.x release.*
+
+**Configuration file (.versionrc.json):**
+
+```json
+{
+  "tag": true,
+  "push": true,
+  "updateMajorTag": true,
+  "updateMinorTag": false
+}
+```
+
+### How It Works
+
+1. Creates the standard semantic version tag (e.g., `v4.2.3`)
+2. Updates or creates the major version tag (`v4`) pointing to the same commit
+3. Optionally updates the minor version tag (`v4.2`) pointing to the same commit
+4. Force-pushes tags to update them on the remote
+
+### When to Use
+
+✅ **Use major version tracking when:**
+
+- Publishing GitHub Actions for users to reference by major version
+- Maintaining libraries where users want automatic patch updates
+- Following semantic versioning with stable major version APIs
+
+⚠️ **Consider the implications:**
+
+- Force-pushing tags can affect users who have those tags locally
+- Users pinned to major versions will automatically get updates
+- Major version tags are lightweight (not annotated) by design
+- Requires explicit opt-in to avoid unintended behavior
+
+### Best Practices
+
+- **Document clearly**: Let users know they can use major version references
+- **Test thoroughly**: Ensure patch/minor updates won't break users on major version pins
+- **Semantic versioning**: Only use this if you follow semver strictly (breaking changes = major bump)
+- **CI/CD**: Automate this in your release workflow for consistency
+- **GitHub Actions**: Essential for action maintainers to provide a good user experience
+
 ### Best Practices
 
 - **Branch Protection**: Protect your main branch and require CI checks to pass
@@ -256,10 +342,11 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    - uses: davegarvey/grubble@v3.0.0
+    - uses: davegarvey/grubble@v4
       with:
         push: true
         tag: true
+        update-major-tag: true  # Maintain v4 pointing to latest v4.x.x
 ```
 
 ### Alternative: Manual Setup
