@@ -118,3 +118,52 @@ pub fn push() -> BumperResult<()> {
     run_git_command(&["push", "--tags"])?;
     Ok(())
 }
+
+/// Update major and/or minor version tags to point to the current commit.
+/// Creates lightweight tags that can be force-pushed to update on remote.
+/// This is useful for GitHub Actions and libraries that want users to reference
+/// by major version (e.g., @v4) and automatically get the latest release.
+///
+/// # Arguments
+/// * `version` - The semantic version being released
+/// * `tag_prefix` - Prefix for tags (typically "v")
+/// * `update_major` - Whether to create/update the major version tag (e.g., v4)
+/// * `update_minor` - Whether to create/update the minor version tag (e.g., v4.1)
+pub fn update_movable_tags(
+    version: &Version,
+    tag_prefix: &str,
+    update_major: bool,
+    update_minor: bool,
+) -> BumperResult<()> {
+    if update_major {
+        let major_tag = format!("{}{}", tag_prefix, version.major);
+        // Delete local tag if exists (ignore errors if it doesn't exist)
+        let _ = run_git_command(&["tag", "-d", &major_tag]);
+        // Create new lightweight tag pointing to current commit
+        run_git_command(&["tag", &major_tag])?;
+    }
+
+    if update_minor {
+        let minor_tag = format!("{}{}.{}", tag_prefix, version.major, version.minor);
+        // Delete local tag if exists (ignore errors if it doesn't exist)
+        let _ = run_git_command(&["tag", "-d", &minor_tag]);
+        // Create new lightweight tag pointing to current commit
+        run_git_command(&["tag", &minor_tag])?;
+    }
+
+    Ok(())
+}
+
+/// Push commits and force-push tags to remote.
+/// Uses --force to allow major/minor version tags to be updated to point
+/// to newer commits. This is necessary for maintaining moving tags.
+///
+/// # Warning
+/// Force-pushing tags can affect users who have those tags checked out locally.
+/// Only use this when maintaining moving major/minor version tags.
+pub fn push_with_force_tags() -> BumperResult<()> {
+    run_git_command(&["push"])?;
+    // Force push tags to update major/minor tags on remote
+    run_git_command(&["push", "--tags", "--force"])?;
+    Ok(())
+}

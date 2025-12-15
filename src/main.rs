@@ -60,6 +60,14 @@ struct Args {
     /// Git user email for commits (only set if no local git config exists)
     #[arg(long)]
     git_user_email: Option<String>,
+
+    /// Update major version tag (e.g., v4 -> v4.x.x)
+    #[arg(long)]
+    update_major_tag: bool,
+
+    /// Update minor version tag (e.g., v4.1 -> v4.1.x)
+    #[arg(long)]
+    update_minor_tag: bool,
 }
 
 fn log(msg: &str, is_raw: bool) {
@@ -109,6 +117,12 @@ fn run() -> BumperResult<()> {
     }
     if let Some(git_user_email) = args.git_user_email {
         config.git_user_email = git_user_email;
+    }
+    if args.update_major_tag {
+        config.update_major_tag = true;
+    }
+    if args.update_minor_tag {
+        config.update_minor_tag = true;
     }
 
     let quiet = args.quiet;
@@ -251,10 +265,24 @@ fn run() -> BumperResult<()> {
             &config.tag_prefix,
             release_notes_message.as_deref(),
         )?;
+
+        // Update major/minor version tags if requested
+        if config.update_major_tag || config.update_minor_tag {
+            git::update_movable_tags(
+                &new_version,
+                &config.tag_prefix,
+                config.update_major_tag,
+                config.update_minor_tag,
+            )?;
+        }
     }
 
     if config.push {
-        git::push()?;
+        if config.update_major_tag || config.update_minor_tag {
+            git::push_with_force_tags()?;
+        } else {
+            git::push()?;
+        }
         let mut actions = vec!["Pushed changes"];
         if config.tag {
             actions.push("and tags");

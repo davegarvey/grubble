@@ -36,6 +36,14 @@ pub struct Config {
     #[serde(default = "default_types")]
     pub types: HashMap<String, String>,
 
+    /// Update major version tag (e.g., v4 pointing to latest v4.x.x)
+    #[serde(default)]
+    pub update_major_tag: bool,
+
+    /// Update minor version tag (e.g., v4.1 pointing to latest v4.1.x)
+    #[serde(default)]
+    pub update_minor_tag: bool,
+
     #[serde(skip)]
     pub raw: bool,
 }
@@ -92,6 +100,8 @@ impl Default for Config {
             git_user_name: default_git_user_name(),
             git_user_email: default_git_user_email(),
             types: default_types(),
+            update_major_tag: false,
+            update_minor_tag: false,
             raw: false,
         }
     }
