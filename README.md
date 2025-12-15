@@ -131,6 +131,8 @@ Alternatively, create `.versionrc.json` in your project root:
   - `"rust"`: Updates `Cargo.toml` version field
   - `"git"`: Tracks version via git tags only (no file updates)
   - `"node"`: Updates `package.json` version field
+- **`types`**: Object mapping commit types to version bump behavior (default: see Commit Types section). Valid values: `"major"`, `"minor"`, `"patch"`, `"none"`
+  - *Example*: `{"config": "patch", "revert": "none"}`
 
 ## Versioning Strategies
 
