@@ -51,6 +51,14 @@ inputs:
     description: 'Git user email for commits'
     required: false
     default: ''
+  update-major-tag:
+    description: 'Update major version tag (e.g., v4 -> v4.x.x)'
+    required: false
+    default: 'false'
+  update-minor-tag:
+    description: 'Update minor version tag (e.g., v4.1 -> v4.1.x)'
+    required: false
+    default: 'false'
 
 outputs:
   version:
@@ -240,6 +248,14 @@ runs:
         
         if [ -n "${{ inputs.git-user-email }}" ]; then
           ARGS="$ARGS --git-user-email \"${{ inputs.git-user-email }}\""
+        fi
+        
+        if [ "${{ inputs.update-major-tag }}" = "true" ]; then
+          ARGS="$ARGS --update-major-tag"
+        fi
+        
+        if [ "${{ inputs.update-minor-tag }}" = "true" ]; then
+          ARGS="$ARGS --update-minor-tag"
         fi
         
         echo "Running: grubble $ARGS"
