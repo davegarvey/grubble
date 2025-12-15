@@ -61,6 +61,16 @@ impl Strategy for RustStrategy {
             }
         }
 
+        // Update Cargo.lock if it exists (for binary crates)
+        if std::path::Path::new("Cargo.lock").exists() {
+            // Run cargo update to refresh Cargo.lock with new version
+            std::process::Command::new("cargo")
+                .args(["update", "--workspace"])
+                .output()
+                .ok(); // Ignore errors, best effort
+            updated.push("Cargo.lock".to_string());
+        }
+
         Ok(updated)
     }
 }
