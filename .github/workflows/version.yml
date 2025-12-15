@@ -46,11 +46,6 @@ jobs:
         toolchain: stable
         cache: true
 
-    - name: Configure Git
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
     - name: Build grubble
       run: cargo build --release
 
@@ -67,6 +62,8 @@ jobs:
           --package-files Cargo.toml \
           --commit-prefix "chore: bump version" \
           --tag-prefix v \
+          --git-user-name "github-actions[bot]" \
+          --git-user-email "41898282+github-actions[bot]@users.noreply.github.com" \
           --preset rust \
           --push \
           --tag \

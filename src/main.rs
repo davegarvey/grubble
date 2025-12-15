@@ -8,8 +8,6 @@ mod git;
 mod strategy;
 mod versioner;
 
-// Trivial change for testing major version bump
-
 use analyser::{analyse_commits, BumpType};
 use config::Config;
 use error::BumperResult;
