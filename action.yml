@@ -39,6 +39,14 @@ inputs:
     description: 'Comma-separated list of files to update'
     required: false
     default: ''
+  git-user-name:
+    description: 'Git user name for commits'
+    required: false
+    default: ''
+  git-user-email:
+    description: 'Git user email for commits'
+    required: false
+    default: ''
 
 outputs:
   version:
@@ -216,6 +224,14 @@ runs:
         
         if [ -n "${{ inputs.package-files }}" ]; then
           ARGS="$ARGS --package-files ${{ inputs.package-files }}"
+        fi
+        
+        if [ -n "${{ inputs.git-user-name }}" ]; then
+          ARGS="$ARGS --git-user-name \"${{ inputs.git-user-name }}\""
+        fi
+        
+        if [ -n "${{ inputs.git-user-email }}" ]; then
+          ARGS="$ARGS --git-user-email \"${{ inputs.git-user-email }}\""
         fi
         
         echo "Running: grubble $ARGS"
