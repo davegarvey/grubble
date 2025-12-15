@@ -1,6 +1,6 @@
 [package]
 name = "grubble"
-version = "4.4.5"
+version = "4.4.6"
 edition = "2021"
 authors = ["David Garvey"]
 description = "Automatic semantic versioning based on conventional commits, optimized for AI-generated commit messages"
