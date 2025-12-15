@@ -1,10 +1,7 @@
 name: Version & Release
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types:
-      - completed
+  push:
     branches: [main]
   workflow_dispatch:
     inputs:
@@ -23,10 +20,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  wait-for-ci:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
+    steps:
+      - name: Wait for CI to complete
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: 'test'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
   version:
     runs-on: ubuntu-latest
-    # Only run if CI succeeded or manually triggered
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    needs: [wait-for-ci]
+    if: always() && (needs.wait-for-ci.result == 'success' || github.event_name == 'workflow_dispatch')
     outputs:
       version_changed: ${{ steps.check_version.outputs.changed }}
       new_version: ${{ steps.check_version.outputs.version }}
@@ -37,7 +46,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        ref: ${{ github.event.workflow_run.head_branch || github.ref }}
         fetch-depth: 0
 
     - name: Setup Rust
