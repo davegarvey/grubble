@@ -1,9 +1,9 @@
 # Grubble
 
 [![CI](https://github.com/davegarvey/grubble/actions/workflows/ci.yml/badge.svg)](https://github.com/davegarvey/grubble/actions/workflows/ci.yml)
-[![Release](https://github.com/davegarvey/grubble/actions/workflows/release.yml/badge.svg)](https://github.com/davegarvey/grubble/actions/workflows/release.yml)
+[![Version & Release](https://github.com/davegarvey/grubble/actions/workflows/version.yml/badge.svg)](https://github.com/davegarvey/grubble/actions/workflows/version.yml)
 [![Version](https://img.shields.io/github/v/release/davegarvey/grubble)](https://github.com/davegarvey/grubble/releases)
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-stable-orange)](https://www.rust-lang.org/)
 
 Automatic semantic versioning based on conventional commits, optimised for AI-generated commit messages.
 
