@@ -287,14 +287,15 @@ jobs:
       run: cargo test
     - name: Run clippy
       run: cargo clippy -- -D warnings
-    - name: Configure Git
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
     - name: Install grubble
       run: cargo install grubble
     - name: Bump version and release
-      run: grubble --push --tag
+      run: |
+        grubble \
+          --push \
+          --tag \
+          --git-user-name "github-actions[bot]" \
+          --git-user-email "41898282+github-actions[bot]@users.noreply.github.com"
 ```
 
 ### CI Best Practices
