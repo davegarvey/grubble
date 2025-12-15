@@ -4,7 +4,7 @@
 
 set -e
 
-echo "🔍 Validating Bumper Release Workflow Configuration"
+echo "🔍 Validating Grubble Release Workflow Configuration"
 echo "=================================================="
 echo ""
 
@@ -207,7 +207,7 @@ echo ""
 echo "Next steps:"
 echo "1. Commit all changes"
 echo "2. Create and push a tag: git tag v$CARGO_VERSION && git push origin v$CARGO_VERSION"
-echo "3. Monitor the release workflow: https://github.com/davegarvey/bumper/actions"
+echo "3. Monitor the release workflow: https://github.com/davegarvey/grubble/actions"
 echo "4. Verify binaries are uploaded to the release"
 echo "5. Test the GitHub Action in a separate repository"
 echo ""

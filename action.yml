@@ -132,12 +132,12 @@ runs:
         fi
         
         echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "Using bumper version: $VERSION"
+        echo "Using grubble version: $VERSION"
 
     - name: Download binary
       shell: bash
       run: |
-        DOWNLOAD_URL="https://github.com/davegarvey/bumper/releases/download/${{ steps.release.outputs.version }}/${{ steps.detect.outputs.archive }}"
+        DOWNLOAD_URL="https://github.com/davegarvey/grubble/releases/download/${{ steps.release.outputs.version }}/${{ steps.detect.outputs.archive }}"
         echo "Downloading from: $DOWNLOAD_URL"
         
         if ! curl -L -f -o "${{ steps.detect.outputs.archive }}" "$DOWNLOAD_URL"; then
@@ -150,7 +150,7 @@ runs:
     - name: Verify checksum
       shell: bash
       run: |
-        CHECKSUM_URL="https://github.com/davegarvey/bumper/releases/download/${{ steps.release.outputs.version }}/${{ steps.detect.outputs.archive }}.sha256"
+        CHECKSUM_URL="https://github.com/davegarvey/grubble/releases/download/${{ steps.release.outputs.version }}/${{ steps.detect.outputs.archive }}.sha256"
         
         if ! curl -L -f -o "${{ steps.detect.outputs.archive }}.sha256" "$CHECKSUM_URL"; then
           echo "::warning::Failed to download checksum file, skipping verification"
