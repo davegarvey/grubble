@@ -133,7 +133,6 @@ fn generate_changelog_entry_at_path(
         }
         entry.push_str(&format!("- {}\n", change.description));
     }
-    // Don't add extra blank line after final list - the header already provides spacing
 
     // Read existing changelog or create header
     let mut content = if changelog_path.exists() {
@@ -144,6 +143,8 @@ fn generate_changelog_entry_at_path(
 
     // Find where to insert the new entry (after the header, before existing entries)
     let insertion_point = if let Some(pos) = content.find("\n## [") {
+        // Add blank line after the new entry if there are existing entries
+        entry.push('\n');
         pos + 1
     } else {
         content.len()
@@ -219,6 +220,63 @@ mod tests {
         assert!(content.contains("- add new feature"));
         assert!(content.contains("### Fixed"));
         assert!(content.contains("- resolve bug"));
+
+        // Verify no double blank lines (triple newlines) in the file
+        assert!(
+            !content.contains("\n\n\n"),
+            "New changelog should not have double blank lines"
+        );
+
+        // The file should end with a single newline, not multiple blank lines
+        assert!(
+            !content.ends_with("\n\n\n"),
+            "New changelog should not end with double blank lines"
+        );
+        assert!(
+            !content.ends_with("\n\n"),
+            "New changelog should not end with a blank line (should end with single newline after last list item)"
+        );
+    }
+
+    #[test]
+    fn test_new_changelog_file_has_no_double_blank_lines_at_end() {
+        let temp_dir = TempDir::new().unwrap();
+        let changelog_path = temp_dir.path().join("CHANGELOG.md");
+
+        let version = Version::parse("1.0.0").unwrap();
+        let commits = vec!["feat: first feature".to_string()];
+
+        generate_changelog_entry_at_path(&version, &commits, &changelog_path).unwrap();
+
+        let content = fs::read_to_string(&changelog_path).unwrap();
+
+        // For a new file with just one entry, the structure should be:
+        // - Header (ending with \n\n)
+        // - Version header: "## [1.0.0] - date\n\n"
+        // - Category header: "### Added\n\n"
+        // - List item: "- first feature\n"
+        // - End of file (no extra newlines)
+
+        // Verify the ending structure
+        assert!(
+            content.ends_with("- first feature\n"),
+            "New changelog should end with list item + single newline, but got: {:?}",
+            &content[content.len().saturating_sub(30)..]
+        );
+
+        // Verify no triple newlines anywhere (which would be double blank lines)
+        assert!(
+            !content.contains("\n\n\n"),
+            "New changelog should not contain double blank lines"
+        );
+
+        // Count the total newlines at the end - should be exactly 1
+        let trailing_newlines = content.chars().rev().take_while(|&c| c == '\n').count();
+        assert_eq!(
+            trailing_newlines, 1,
+            "New changelog should end with exactly 1 newline, found {}",
+            trailing_newlines
+        );
     }
 
     #[test]
@@ -443,6 +501,55 @@ mod tests {
                 line
             );
         }
+    }
+
+    #[test]
+    fn test_generate_changelog_entry_proper_spacing_between_releases() {
+        let temp_dir = TempDir::new().unwrap();
+        let changelog_path = temp_dir.path().join("CHANGELOG.md");
+
+        // Create first release
+        let version1 = Version::parse("1.0.0").unwrap();
+        let commits1 = vec!["feat: initial feature".to_string()];
+        generate_changelog_entry_at_path(&version1, &commits1, &changelog_path).unwrap();
+
+        // Create second release
+        let version2 = Version::parse("1.1.0").unwrap();
+        let commits2 = vec!["fix: bug fix".to_string()];
+        generate_changelog_entry_at_path(&version2, &commits2, &changelog_path).unwrap();
+
+        // Create third release
+        let version3 = Version::parse("1.2.0").unwrap();
+        let commits3 = vec!["feat: another feature".to_string()];
+        generate_changelog_entry_at_path(&version3, &commits3, &changelog_path).unwrap();
+
+        let content = fs::read_to_string(&changelog_path).unwrap();
+
+        // Verify proper spacing: should have exactly one blank line between release entries
+        // Pattern should be: "- item\n\n## [version]" (list item, blank line, next header)
+        assert!(
+            content.contains("- another feature\n\n## [1.1.0]"),
+            "Missing blank line between [1.2.0] and [1.1.0]"
+        );
+        assert!(
+            content.contains("- bug fix\n\n## [1.0.0]"),
+            "Missing blank line between [1.1.0] and [1.0.0]"
+        );
+
+        // Should NOT have double blank lines (triple newlines)
+        assert!(
+            !content.contains("\n\n\n"),
+            "Found double blank line (triple newlines) in changelog"
+        );
+
+        // Verify all versions are present and in correct order
+        let v3_pos = content.find("## [1.2.0]").unwrap();
+        let v2_pos = content.find("## [1.1.0]").unwrap();
+        let v1_pos = content.find("## [1.0.0]").unwrap();
+        assert!(
+            v3_pos < v2_pos && v2_pos < v1_pos,
+            "Versions not in descending order"
+        );
     }
 
     #[test]
