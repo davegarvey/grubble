@@ -124,11 +124,16 @@ fn generate_changelog_entry_at_path(
     let mut current_category: Option<ChangeCategory> = None;
     for change in changes {
         if current_category.as_ref() != Some(&change.category) {
+            // Add blank line after previous list (if exists)
+            if current_category.is_some() {
+                entry.push('\n');
+            }
             entry.push_str(&format!("{}\n\n", change.category.as_str()));
             current_category = Some(change.category);
         }
         entry.push_str(&format!("- {}\n", change.description));
     }
+    // Add blank line after final list
     entry.push('\n');
 
     // Read existing changelog or create header
@@ -397,5 +402,90 @@ mod tests {
         assert!(changed_pos < removed_pos);
         assert!(removed_pos < fixed_pos);
         assert!(fixed_pos < security_pos);
+    }
+
+    #[test]
+    fn test_generate_changelog_entry_markdown_lint_compliance() {
+        let temp_dir = TempDir::new().unwrap();
+        let changelog_path = temp_dir.path().join("CHANGELOG.md");
+
+        let version = Version::parse("1.0.0").unwrap();
+        let commits = vec![
+            "feat: add new feature".to_string(),
+            "fix: resolve bug".to_string(),
+        ];
+
+        generate_changelog_entry_at_path(&version, &commits, &changelog_path).unwrap();
+
+        let content = fs::read_to_string(&changelog_path).unwrap();
+
+        // Test MD032: Lists should be surrounded by blank lines
+        // Check that there's a blank line after "### Added" before the list
+        assert!(content.contains("### Added\n\n- add new feature\n\n"));
+
+        // Test MD022: Headings should be surrounded by blank lines
+        // Check that there's a blank line before "### Fixed" heading
+        assert!(content.contains("\n\n### Fixed\n\n"));
+
+        // Verify the list ends with a blank line
+        assert!(content.contains("- resolve bug\n\n"));
+
+        // Test: No triple newlines (double blank lines) should exist
+        assert!(
+            !content.contains("\n\n\n"),
+            "Found triple newlines (double blank lines)"
+        );
+
+        // Test: No trailing whitespace after newlines
+        for line in content.lines() {
+            assert!(
+                !line.ends_with(' '),
+                "Found trailing whitespace on line: {}",
+                line
+            );
+        }
+    }
+
+    #[test]
+    #[ignore] // Run with: cargo test -- --ignored --nocapture (automatically run in CI)
+    fn test_markdown_linter_if_available() {
+        use std::process::Command;
+
+        let temp_dir = TempDir::new().unwrap();
+        let changelog_path = temp_dir.path().join("CHANGELOG.md");
+
+        let version = Version::parse("1.0.0").unwrap();
+        let commits = vec![
+            "feat: add new feature".to_string(),
+            "fix: resolve bug".to_string(),
+            "refactor: improve code".to_string(),
+        ];
+
+        generate_changelog_entry_at_path(&version, &commits, &changelog_path).unwrap();
+
+        // Try to run markdownlint-cli if available
+        // Install with: npm install -g markdownlint-cli
+        let result = Command::new("markdownlint")
+            .arg(changelog_path.to_str().unwrap())
+            .output();
+
+        match result {
+            Ok(output) => {
+                if output.status.success() {
+                    println!("✓ Markdown linter passed!");
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    panic!(
+                        "Markdown linter failed!\nstdout: {}\nstderr: {}",
+                        stdout, stderr
+                    );
+                }
+            }
+            Err(e) => {
+                println!("⚠ markdownlint not found (optional): {}", e);
+                println!("  To enable this test, install: npm install -g markdownlint-cli");
+            }
+        }
     }
 }
