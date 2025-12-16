@@ -66,3 +66,4 @@ Evaluate changed files in the repository and create commits following the Conven
 - Do not push changes to the remote repository.
 - Do not combine unrelated changes into a single commit.
 - Do not modify the content of the changes; only group, stage and commit.
+- Do not use git hunks or partial staging; stage entire files only.
