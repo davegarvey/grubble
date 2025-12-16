@@ -1,0 +1,21 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [4.6.0] - 2025-12-16
+
+### Added
+
+- add changelog generation feature
+### Changed
+
+- Merge pull request #40 from davegarvey:changelog
+- enable changelog generation in project workflow
+- Merge pull request #39 from davegarvey:verbosity
+- reduce GitHub Action output verbosity
+- Merge pull request #38 from davegarvey:bumper-to-grubble
+- update bumper references to grubble
+
