@@ -12,17 +12,20 @@ Thank you for your interest in contributing to Grubble! This document provides g
 ### Getting Started
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/davegarvey/grubble.git
    cd grubble
    ```
 
 2. Run tests:
+
    ```bash
    cargo test
    ```
 
 3. Run linting:
+
    ```bash
    cargo clippy
    ```
@@ -32,6 +35,7 @@ Thank you for your interest in contributing to Grubble! This document provides g
 ### Standard Test Suite
 
 Run all tests with:
+
 ```bash
 cargo test
 ```
@@ -49,6 +53,7 @@ Grubble includes optional tests that validate generated changelog files against 
 #### Running Markdown Linting Tests
 
 **Option 1: Environment Variable (Recommended)**
+
 ```bash
 # Set for current session
 export RUN_MARKDOWN_LINT=1
@@ -59,6 +64,7 @@ RUN_MARKDOWN_LINT=1 cargo test
 ```
 
 **Option 2: .env File**
+
 ```bash
 # Create .env file
 echo 'RUN_MARKDOWN_LINT=1' > .env
@@ -68,6 +74,7 @@ export $(cat .env) && cargo test
 ```
 
 **Option 3: Convenience Script**
+
 ```bash
 # Use the provided script
 ./test-with-markdown.sh
@@ -83,6 +90,7 @@ export $(cat .env) && cargo test
 ### Test Coverage
 
 The project maintains comprehensive test coverage including:
+
 - Unit tests for all core functionality
 - Integration tests for changelog generation
 - Markdown compliance tests
@@ -93,6 +101,7 @@ The project maintains comprehensive test coverage including:
 ### Linting
 
 Run clippy for code quality checks:
+
 ```bash
 cargo clippy --all-targets --all-features -- -D warnings
 ```
@@ -100,6 +109,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ### Formatting
 
 Format code according to Rust standards:
+
 ```bash
 cargo fmt --all
 ```
@@ -107,6 +117,7 @@ cargo fmt --all
 ### Pre-commit Hooks
 
 The project uses Husky for pre-commit hooks. Install dependencies and set up hooks:
+
 ```bash
 npm install
 ```
