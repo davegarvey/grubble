@@ -553,9 +553,14 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Run with: cargo test -- --ignored --nocapture (automatically run in CI)
     fn test_markdown_linter_if_available() {
         use std::process::Command;
+
+        // Only run this test in CI or when explicitly requested
+        if std::env::var("CI").is_err() && std::env::var("RUN_MARKDOWN_LINT").is_err() {
+            println!("⚠ Skipping markdown linter test (run with RUN_MARKDOWN_LINT=1 to enable)");
+            return;
+        }
 
         let temp_dir = TempDir::new().unwrap();
         let changelog_path = temp_dir.path().join("CHANGELOG.md");
@@ -570,7 +575,6 @@ mod tests {
         generate_changelog_entry_at_path(&version, &commits, &changelog_path).unwrap();
 
         // Try to run markdownlint-cli if available
-        // Install with: npm install -g markdownlint-cli
         let result = Command::new("npx")
             .args(["markdownlint-cli", changelog_path.to_str().unwrap()])
             .output();
@@ -589,8 +593,7 @@ mod tests {
                 }
             }
             Err(e) => {
-                println!("⚠ markdownlint not found (optional): {}", e);
-                println!("  To enable this test, install: npm install -g markdownlint-cli");
+                panic!("markdownlint-cli not available but required in CI: {}", e);
             }
         }
     }
