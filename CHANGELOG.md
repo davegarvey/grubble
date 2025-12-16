@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.0] - 2025-12-16
+
+### Added
+
+- add markdown compliance to changelog generation
+
+### Changed
+
+- Merge pull request #41 from davegarvey:md-lint
+- fix typo in sc.prompt.md
+- fix CHANGELOG.md formatting
+- add markdownlint-cli to CI workflow
+
+### Fixed
+
+- correct markdown formatting in changelog generation
 ## [4.6.0] - 2025-12-16
 
 ### Added
