@@ -171,7 +171,7 @@ runs:
             fi
           else
             # Unix verification
-            if ! shasum -a 256 -c "${{ steps.detect.outputs.archive }}.sha256" 2>&1 | grep -v "OK$"; then
+            if ! shasum -a 256 -c "${{ steps.detect.outputs.archive }}.sha256"; then
               echo "::error::Checksum verification failed"
               exit 1
             fi
