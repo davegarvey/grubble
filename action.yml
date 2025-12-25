@@ -46,11 +46,11 @@ inputs:
   git-user-name:
     description: 'Git user name for commits'
     required: false
-    default: ''
+    default: 'github-actions[bot]'
   git-user-email:
     description: 'Git user email for commits'
     required: false
-    default: ''
+    default: '41898282+github-actions[bot]@users.noreply.github.com'
   update-major-tag:
     description: 'Update major version tag (e.g., v4 -> v4.x.x)'
     required: false

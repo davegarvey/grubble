@@ -54,11 +54,11 @@ struct Args {
     #[arg(long)]
     package_files: Option<String>,
 
-    /// Git user name for commits (only set if no local git config exists)
+    /// Git user name for commits
     #[arg(long)]
     git_user_name: Option<String>,
 
-    /// Git user email for commits (only set if no local git config exists)
+    /// Git user email for commits
     #[arg(long)]
     git_user_email: Option<String>,
 
