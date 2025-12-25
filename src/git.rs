@@ -103,11 +103,10 @@ pub fn create_tag(version: &str, tag_prefix: &str, message: Option<&str>) -> Bum
 }
 
 pub fn set_git_config(user_name: &str, user_email: &str) -> BumperResult<()> {
-    // Only set if not already configured locally
-    if run_git_command(&["config", "--local", "user.name"]).is_err() {
+    if !user_name.is_empty() {
         run_git_command(&["config", "user.name", user_name])?;
     }
-    if run_git_command(&["config", "--local", "user.email"]).is_err() {
+    if !user_email.is_empty() {
         run_git_command(&["config", "user.email", user_email])?;
     }
     Ok(())
