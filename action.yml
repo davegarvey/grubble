@@ -63,6 +63,14 @@ inputs:
     description: 'Generate and maintain a CHANGELOG.md file'
     required: false
     default: 'false'
+  dry-run:
+    description: 'Check if bump is needed without making changes (exit 0 if bump needed, 1 if not)'
+    required: false
+    default: 'false'
+  bump-type-only:
+    description: 'Output only the bump type and exit (major, minor, patch, or none)'
+    required: false
+    default: 'false'
 
 outputs:
   version:
@@ -215,63 +223,85 @@ runs:
       shell: bash
       run: |
         ARGS=""
-        
+
+        # Handle bump-type-only mode first
+        if [ "${{ inputs.bump-type-only }}" = "true" ]; then
+          if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
+            ./grubble.exe --bump-type
+          else
+            ./grubble --bump-type
+          fi
+          echo "bump_type=$(./grubble --bump-type)" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Handle dry-run mode
+        if [ "${{ inputs.dry-run }}" = "true" ]; then
+          if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
+            ./grubble.exe --dry-run
+          else
+            ./grubble --dry-run
+          fi
+          echo "bump_type=$(./grubble --bump-type)" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
         if [ "${{ inputs.push }}" = "true" ]; then
           ARGS="$ARGS --push"
         fi
-        
+
         if [ "${{ inputs.tag }}" = "true" ]; then
           ARGS="$ARGS --tag"
         fi
-        
+
         if [ "${{ inputs.release-notes }}" = "true" ]; then
           ARGS="$ARGS --release-notes"
         fi
-        
+
         if [ "${{ inputs.raw }}" = "true" ]; then
           ARGS="$ARGS --raw"
         fi
-        
+
         if [ "${{ inputs.quiet }}" = "true" ]; then
           ARGS="$ARGS --quiet"
         fi
-        
+
         if [ -n "${{ inputs.preset }}" ]; then
           ARGS="$ARGS --preset ${{ inputs.preset }}"
         fi
-        
+
         if [ -n "${{ inputs.tag-prefix }}" ]; then
           ARGS="$ARGS --tag-prefix ${{ inputs.tag-prefix }}"
         fi
-        
+
         if [ -n "${{ inputs.commit-prefix }}" ]; then
           ARGS="$ARGS --commit-prefix \"${{ inputs.commit-prefix }}\""
         fi
-        
+
         if [ -n "${{ inputs.package-files }}" ]; then
           ARGS="$ARGS --package-files ${{ inputs.package-files }}"
         fi
-        
+
         if [ -n "${{ inputs.git-user-name }}" ]; then
           ARGS="$ARGS --git-user-name \"${{ inputs.git-user-name }}\""
         fi
-        
+
         if [ -n "${{ inputs.git-user-email }}" ]; then
           ARGS="$ARGS --git-user-email \"${{ inputs.git-user-email }}\""
         fi
-        
+
         if [ "${{ inputs.update-major-tag }}" = "true" ]; then
           ARGS="$ARGS --update-major-tag"
         fi
-        
+
         if [ "${{ inputs.update-minor-tag }}" = "true" ]; then
           ARGS="$ARGS --update-minor-tag"
         fi
-        
+
         if [ "${{ inputs.changelog }}" = "true" ]; then
           ARGS="$ARGS --changelog"
         fi
-        
+
         if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
           OUTPUT=$(./grubble.exe $ARGS 2>&1) || {
             echo "::error::Grubble command failed: $OUTPUT"
@@ -283,29 +313,29 @@ runs:
             exit 1
           }
         fi
-        
+
         echo "$OUTPUT"
-        
+
         # Get the new version
         if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
           NEW_VERSION=$(./grubble.exe --raw 2>/dev/null || echo "${{ steps.current.outputs.previous_version }}")
         else
           NEW_VERSION=$(./grubble --raw 2>/dev/null || echo "${{ steps.current.outputs.previous_version }}")
         fi
-        
+
         echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-        
+
         # Determine bump type
         PREV="${{ steps.current.outputs.previous_version }}"
         if [ "$NEW_VERSION" != "$PREV" ]; then
           PREV_MAJOR=$(echo $PREV | cut -d. -f1)
           PREV_MINOR=$(echo $PREV | cut -d. -f2)
           PREV_PATCH=$(echo $PREV | cut -d. -f3)
-          
+
           NEW_MAJOR=$(echo $NEW_VERSION | cut -d. -f1)
           NEW_MINOR=$(echo $NEW_VERSION | cut -d. -f2)
           NEW_PATCH=$(echo $NEW_VERSION | cut -d. -f3)
-          
+
           if [ "$NEW_MAJOR" != "$PREV_MAJOR" ]; then
             echo "bump_type=major" >> $GITHUB_OUTPUT
           elif [ "$NEW_MINOR" != "$PREV_MINOR" ]; then

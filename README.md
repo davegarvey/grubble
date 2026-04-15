@@ -68,6 +68,17 @@ grubble --tag
 # Raw mode (output only version, dry run)
 grubble --raw
 
+# Check if bump is needed (exit 0 if needed, exit 1 if not)
+grubble --dry-run
+
+# Get the bump type (outputs: major, minor, patch, or none)
+grubble --bump-type
+
+# Use bump type in CI scripts
+if [ "$(grubble --bump-type)" != "none" ]; then
+  grubble --push --tag
+fi
+
 # Suppress commit list output
 grubble --quiet
 
@@ -494,6 +505,59 @@ jobs:
 - **Branch Protection**: Require CI checks and restrict direct pushes to main
 - **Testing**: Always run `cargo test` and `cargo clippy` before releasing
 - **Fetch Depth**: Use `fetch-depth: 0` for complete commit history analysis
+
+## CI/CD Integration
+
+### Checking for Bumps in CI
+
+Use `--dry-run` to check if a version bump is needed without making changes:
+
+```yaml
+- name: Check for version bump
+  id: version
+  run: |
+    if grubble --dry-run --preset node; then
+      echo "BUMP_NEEDED=true" >> $GITHUB_ENV
+    fi
+```
+
+Exit codes:
+- **0**: Version bump is needed
+- **1**: No version bump needed
+
+### Getting Bump Type
+
+Use `--bump-type` to get the type of bump that would occur:
+
+```bash
+BUMP=$(grubble --bump-type --preset node)
+echo "Bump type: $BUMP"
+# Outputs: major, minor, patch, or none
+```
+
+### Conditional Deployment
+
+```bash
+# Only deploy if there's a version bump
+if grubble --dry-run --preset node; then
+  grubble --push --tag --preset node
+  # ... deployment steps
+fi
+```
+
+### Combining with Other Tools
+
+```bash
+# Get the new version before bumping
+NEW_VERSION=$(grubble --raw --preset node)
+echo "Releasing version $NEW_VERSION"
+
+# Perform the actual bump
+grubble --push --tag --preset node
+
+# Use the version in notifications
+gh release create "v$NEW_VERSION" --title "Release v$NEW_VERSION"
+```
 
 ## How It Works
 
