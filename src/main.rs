@@ -14,9 +14,34 @@ use config::Config;
 use error::BumperResult;
 use strategy::load_strategy;
 
+#[derive(Debug)]
+enum ExitCode {
+    Ok,
+    NoBump,
+}
+
 #[derive(Parser, Debug)]
-#[command(name = "bump")]
-#[command(about = "Automatic semantic versioning based on conventional commits", long_about = None)]
+#[command(name = "grubble")]
+#[command(
+    about = "Automatic semantic versioning based on conventional commits",
+    long_about = "Grubble - Automatic Semantic Versioning
+
+Grubble analyzes conventional commits since the last version tag and automatically
+bumps the semantic version accordingly.
+
+Version Bump Rules:
+  - feat:        -> minor bump
+  - fix:         -> patch bump
+  - feat!: / !:  -> major bump (breaking change)
+
+Common Usage:
+  grubble                    # Analyze and bump version
+  grubble --push --tag       # Bump and push to remote with tag
+  grubble --dry-run          # Check if bump is needed (exit 0 if yes, 1 if no)
+  grubble --bump-type        # Output bump type (major/minor/patch/none)
+  grubble --preset rust      # Use Rust Cargo.toml versioning
+  grubble --changelog        # Generate CHANGELOG.md"
+)]
 struct Args {
     /// Push changes to remote
     #[arg(short, long)]
@@ -73,6 +98,15 @@ struct Args {
     /// Generate and maintain a CHANGELOG.md file
     #[arg(long)]
     changelog: bool,
+
+    /// Output the bump type (major, minor, patch, or none) and exit
+    #[arg(long)]
+    bump_type: bool,
+
+    /// Check if version bump is needed (exit 0 if bump needed, exit 1 if no bump)
+    /// Does not modify any files or create commits/tags
+    #[arg(long)]
+    dry_run: bool,
 }
 
 fn log(msg: &str, is_raw: bool) {
@@ -81,8 +115,17 @@ fn log(msg: &str, is_raw: bool) {
     }
 }
 
-fn run() -> BumperResult<()> {
+fn run() -> BumperResult<ExitCode> {
     let args = Args::parse();
+
+    let is_bump_type = args.bump_type;
+    let is_dry_run = args.dry_run;
+
+    // Handle --bump-type mode
+    if is_bump_type {
+        run_bump_type(&args)?;
+        return Ok(ExitCode::Ok);
+    }
 
     // Load config from file
     let mut config = Config::load();
@@ -142,6 +185,15 @@ fn run() -> BumperResult<()> {
         config.raw = true;
         config.push = false;
         config.tag = false;
+    }
+
+    // Force settings for dry-run mode
+    if is_dry_run {
+        config.raw = true;
+        config.push = false;
+        config.tag = false;
+        config.changelog = false;
+        config.release_notes = false;
     }
 
     if config.release_notes && !config.tag {
@@ -216,7 +268,7 @@ fn run() -> BumperResult<()> {
         if is_raw {
             println!("{}", current_version);
         }
-        return Ok(());
+        return Ok(ExitCode::NoBump);
     }
 
     let analysis = analyse_commits(&commits, &config);
@@ -230,7 +282,7 @@ fn run() -> BumperResult<()> {
         if is_raw {
             println!("{}", current_version);
         }
-        return Ok(());
+        return Ok(ExitCode::NoBump);
     }
 
     log("Triggering commits:", is_raw);
@@ -253,7 +305,7 @@ fn run() -> BumperResult<()> {
 
     if is_raw {
         println!("{}", new_version);
-        return Ok(());
+        return Ok(ExitCode::Ok);
     }
 
     let updated_files = strategy.update_files(&new_version)?;
@@ -318,12 +370,62 @@ fn run() -> BumperResult<()> {
         }
     }
 
+    Ok(ExitCode::Ok)
+}
+
+fn run_bump_type(args: &Args) -> BumperResult<()> {
+    let mut config = Config::load();
+
+    if let Some(preset) = &args.preset {
+        config.preset = preset.clone();
+    }
+    if args.package_files.is_none() {
+        config.package_files = match config.preset.as_str() {
+            "rust" => vec!["Cargo.toml".to_string()],
+            "node" => vec!["package.json".to_string()],
+            "git" => vec![],
+            _ => vec!["package.json".to_string()],
+        };
+    }
+    if let Some(tag_prefix) = &args.tag_prefix {
+        config.tag_prefix = tag_prefix.clone();
+    }
+    if let Some(package_files) = &args.package_files {
+        config.package_files = package_files.split(',').map(|s| s.to_string()).collect();
+    }
+    if let Some(git_user_name) = &args.git_user_name {
+        config.git_user_name = git_user_name.clone();
+    }
+    if let Some(git_user_email) = &args.git_user_email {
+        config.git_user_email = git_user_email.clone();
+    }
+
+    git::set_git_config(&config.git_user_name, &config.git_user_email)?;
+
+    let strategy = load_strategy(&config);
+    let _current_version = strategy.get_current_version()?;
+
+    let last_tag = git::get_last_tag()?;
+    let commits = git::get_commits_since_tag(last_tag.as_deref())?;
+
+    if commits.is_empty() {
+        println!("none");
+        return Ok(());
+    }
+
+    let analysis = analyse_commits(&commits, &config);
+    println!("{}", analysis.bump.as_str());
+
     Ok(())
 }
 
 fn main() {
-    if let Err(e) = run() {
-        eprintln!("Error: {}", e);
-        process::exit(1);
+    match run() {
+        Ok(ExitCode::Ok) => process::exit(0),
+        Ok(ExitCode::NoBump) => process::exit(1),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
     }
 }
