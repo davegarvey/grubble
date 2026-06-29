@@ -308,19 +308,29 @@ runs:
           ARGS="$ARGS --changelog"
         fi
 
+        # Run grubble. Exit 1 = "no bump needed" (clean no-op), other non-0 = error.
+        set +e
         if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-          OUTPUT=$(./grubble.exe $ARGS 2>&1) || {
-            echo "::error::Grubble command failed: $OUTPUT"
-            exit 1
-          }
+          OUTPUT=$(./grubble.exe $ARGS 2>&1)
+          GRUBBLE_EXIT=$?
         else
-          OUTPUT=$(./grubble $ARGS 2>&1) || {
-            echo "::error::Grubble command failed: $OUTPUT"
-            exit 1
-          }
+          OUTPUT=$(./grubble $ARGS 2>&1)
+          GRUBBLE_EXIT=$?
         fi
+        set -e
 
         echo "$OUTPUT"
+
+        if [ $GRUBBLE_EXIT -eq 1 ]; then
+          # No bump needed — exit cleanly, not an error
+          echo "version=${{ steps.current.outputs.previous_version }}" >> $GITHUB_OUTPUT
+          echo "bump_type=none" >> $GITHUB_OUTPUT
+          echo "previous_version=${{ steps.current.outputs.previous_version }}" >> $GITHUB_OUTPUT
+          exit 0
+        elif [ $GRUBBLE_EXIT -ne 0 ]; then
+          echo "::error::Grubble command failed (exit $GRUBBLE_EXIT): $OUTPUT"
+          exit 1
+        fi
 
         # Get the new version
         if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
