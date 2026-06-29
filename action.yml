@@ -211,10 +211,16 @@ runs:
       id: current
       shell: bash
       run: |
-        if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-          CURRENT_VERSION=$(./grubble.exe --raw 2>/dev/null || echo "0.0.0")
+        if [ "${{ inputs.preset }}" = "node" ]; then
+          CURRENT_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0")
+        elif [ "${{ inputs.preset }}" = "rust" ]; then
+          CURRENT_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2 2>/dev/null || echo "0.0.0")
         else
-          CURRENT_VERSION=$(./grubble --raw 2>/dev/null || echo "0.0.0")
+          if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
+            CURRENT_VERSION=$(./grubble.exe --raw 2>/dev/null || echo "0.0.0")
+          else
+            CURRENT_VERSION=$(./grubble --raw 2>/dev/null || echo "0.0.0")
+          fi
         fi
         echo "previous_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
@@ -348,3 +354,5 @@ runs:
         else
           echo "bump_type=none" >> $GITHUB_OUTPUT
         fi
+
+        echo "previous_version=$PREV" >> $GITHUB_OUTPUT
