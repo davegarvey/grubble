@@ -212,9 +212,24 @@ runs:
       shell: bash
       run: |
         if [ "${{ inputs.preset }}" = "node" ]; then
-          CURRENT_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0")
+          if [ -n "${{ inputs.package-files }}" ]; then
+            FIRST_FILE=$(echo "${{ inputs.package-files }}" | cut -d',' -f1)
+            # Ensure relative path has ./ prefix for require() resolution
+            case "$FIRST_FILE" in
+              /*|./*|../*) ;;
+              *) FIRST_FILE="./$FIRST_FILE" ;;
+            esac
+            CURRENT_VERSION=$(node -p "require('$FIRST_FILE').version" 2>/dev/null || echo "0.0.0")
+          else
+            CURRENT_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0")
+          fi
         elif [ "${{ inputs.preset }}" = "rust" ]; then
-          CURRENT_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2 2>/dev/null || echo "0.0.0")
+          if [ -n "${{ inputs.package-files }}" ]; then
+            FIRST_FILE=$(echo "${{ inputs.package-files }}" | cut -d',' -f1)
+            CURRENT_VERSION=$(grep '^version' "$FIRST_FILE" | head -1 | cut -d'"' -f2 2>/dev/null || echo "0.0.0")
+          else
+            CURRENT_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2 2>/dev/null || echo "0.0.0")
+          fi
         else
           if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
             CURRENT_VERSION=$(./grubble.exe --raw 2>/dev/null || echo "0.0.0")
@@ -332,11 +347,25 @@ runs:
           exit 1
         fi
 
-        # Get the new version
+        # Get the new version — forward config flags so --raw uses the same preset and files.
+        # Only version-relevant flags (not action flags like --push/--tag) to keep --raw a pure read.
+        READ_ARGS="--raw"
+        if [ -n "${{ inputs.preset }}" ]; then
+          READ_ARGS="$READ_ARGS --preset ${{ inputs.preset }}"
+        fi
+        if [ -n "${{ inputs.package-files }}" ]; then
+          READ_ARGS="$READ_ARGS --package-files ${{ inputs.package-files }}"
+        fi
+        if [ -n "${{ inputs.tag-prefix }}" ]; then
+          READ_ARGS="$READ_ARGS --tag-prefix ${{ inputs.tag-prefix }}"
+        fi
+        if [ -n "${{ inputs.commit-prefix }}" ]; then
+          READ_ARGS="$READ_ARGS --commit-prefix \"${{ inputs.commit-prefix }}\""
+        fi
         if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-          NEW_VERSION=$(./grubble.exe --raw 2>/dev/null || echo "${{ steps.current.outputs.previous_version }}")
+          NEW_VERSION=$(./grubble.exe $READ_ARGS 2>/dev/null || echo "${{ steps.current.outputs.previous_version }}")
         else
-          NEW_VERSION=$(./grubble --raw 2>/dev/null || echo "${{ steps.current.outputs.previous_version }}")
+          NEW_VERSION=$(./grubble $READ_ARGS 2>/dev/null || echo "${{ steps.current.outputs.previous_version }}")
         fi
 
         echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
