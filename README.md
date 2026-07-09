@@ -105,8 +105,9 @@ grubble --tag                # create a git tag for the new version
 grubble --changelog          # generate or update CHANGELOG.md
 grubble --update-major-tag   # also maintain a floating v4 tag
 grubble --raw                # print the new version, no changes
-grubble --dry-run            # exit 0 if a bump is needed, 1 otherwise
+grubble --dry-run            # preview the bump without applying it
 grubble --bump-type          # print major | minor | patch | none
+grubble --output json        # emit machine-readable output (with --raw or --bump-type)
 grubble --quiet              # suppress the commit list
 grubble --help               # full flag reference
 ```
@@ -141,8 +142,8 @@ Grubble reads `.versionrc.json` from the project root. Flags and file values are
 | `changelog` | `--changelog` | `false` | Generate or update `CHANGELOG.md`. |
 | `updateMajorTag` | `--update-major-tag` | `false` | Maintain a floating `v4` tag pointing to the latest `v4.x.x`. |
 | `updateMinorTag` | `--update-minor-tag` | `false` | Maintain a floating `v4.1` tag pointing to the latest `v4.1.x`. |
-| `gitUserName` | `--git-user-name` | `grubble-bot` | Identity used for the bump commit when no local git user is configured. |
-| `gitUserEmail` | `--git-user-email` | `grubble-bot@noreply.local` | Email used for the bump commit when no local git user is configured. |
+| `gitUserName` | `--git-user-name` | `github-actions[bot]` | Identity used for the bump commit when no local git user is configured. |
+| `gitUserEmail` | `--git-user-email` | `41898282+github-actions[bot]@users.noreply.github.com` | Email used for the bump commit when no local git user is configured. |
 | `types` | — | see [Commit Types](#commit-types) | Per-type bump behavior. Valid values: `major`, `minor`, `patch`, `none`. |
 
 If your repo has a local `user.name` / `user.email` set, grubble uses those and ignores `gitUserName` / `gitUserEmail`. In CI, set these to match your bot user (e.g. `github-actions[bot]`).
@@ -265,13 +266,15 @@ CI checklist:
 
 ### Skip the bump when nothing changed
 
-`grubble --dry-run` exits 0 when a bump is needed and 1 otherwise. Use it as a gate:
+`grubble --bump-type` prints `major`, `minor`, `patch`, or `none`. Use it as a gate:
 
 ```bash
-if grubble --dry-run --preset rust; then
+if [ "$(grubble --bump-type --preset rust)" != "none" ]; then
   grubble --push --tag --preset rust
 fi
 ```
+
+`grubble --dry-run` always exits 0 (success, including no-op). For the "would a bump happen?" signal, use `--bump-type`.
 
 ### Read the bump type
 
@@ -288,12 +291,34 @@ esac
 
 ### Read the new version
 
-`grubble --raw` prints the version that would be released without making changes. Pair it with `gh release create` or a deploy step:
+`grubble --raw` prints the version that would be released without making changes. It honors `--preset` (e.g. `--preset rust` reads from `Cargo.toml`; `--preset node` reads from `package.json`; `--preset git` reads from the latest tag). Pair it with `gh release create` or a deploy step:
 
 ```bash
 NEW_VERSION=$(grubble --raw --preset rust)
 gh release create "v$NEW_VERSION" --title "Release v$NEW_VERSION"
 ```
+
+### Machine-readable output
+
+Both `--bump-type` and `--raw` accept `--output json` for stable, machine-readable output:
+
+```bash
+$ grubble --bump-type --output json
+{
+  "bump_type": "minor",
+  "current_version": "1.2.3",
+  "triggering_commits": ["Minor: feat: add login"],
+  "unknown_commits": []
+}
+
+$ grubble --raw --preset rust --output json
+{
+  "version": "1.2.3",
+  "preset": "rust"
+}
+```
+
+`--output json` is rejected when combined with the normal run mode or `--dry-run` (those modes always print human-readable text). Use `--output json` from CI scripts that need to parse the result instead of shell-substring matching.
 
 ## How It Works
 
@@ -364,6 +389,48 @@ Empty or invalid `.versionrc.json` falls back to defaults with a warning. Run gr
 **"Invalid format" in `$GITHUB_OUTPUT`**
 
 Fixed in v4.9.4 (see [#54](https://github.com/davegarvey/grubble/issues/54)). Bump the Action to `davegarvey/grubble@v4` (movable) to pick up the fix, or pin to a release ≥ v4.9.4 once you have a chance to verify.
+
+## Migration from v4
+
+v5.0.0 is a breaking release for the CLI's exit-code contract. The GitHub Action and `version.yml` workflow are unchanged in behavior; the v5 contract is what they always wanted.
+
+### What changed
+
+- **`grubble` exits 0 on success**, including when no bump is needed. Previously, exit 1 meant "no bump" — now exit 1 means "error."
+- **`grubble --raw` honors `--preset`**. `--raw --preset rust` reads from `Cargo.toml`; `--raw --preset node` reads from `package.json`; `--raw --preset git` reads from the latest tag. Previously, `--raw` always read from git tags regardless of preset.
+- **New `--output text|json` flag** for `--bump-type` and `--raw`. Use this from CI scripts that need to parse the result.
+- **Action requires release checksums** (was warn-and-continue on missing `.sha256`).
+- The Action's "Get current version" step now uses a single `./grubble --raw --preset <preset>` call instead of preset-specific shell branches.
+
+### If you script against the CLI
+
+Replace exit-code gates with `--bump-type` checks:
+
+```bash
+# v4 (broken on v5)
+if grubble --dry-run --preset rust; then
+  grubble --push --tag --preset rust
+fi
+
+# v5
+if [ "$(grubble --bump-type --preset rust)" != "none" ]; then
+  grubble --push --tag --preset rust
+fi
+```
+
+Replace `--raw` exit-code handling with output parsing:
+
+```bash
+# v4
+NEW_VERSION=$(./grubble --raw --preset rust) || NEW_VERSION=$(./grubble --raw --preset rust || echo "0.0.0")
+
+# v5 — exits 0 whenever a version is produced
+NEW_VERSION=$(./grubble --raw --preset rust)
+```
+
+### Staying on v4
+
+`@v4` (the floating major tag) and all `@v4.x.x` specific tags remain available indefinitely. Pin to `@v4` or `@v4.9.4` to stay on the v4 contract. The default floating tag shifts to `@v5` once v5 ships.
 
 ## Contributing
 

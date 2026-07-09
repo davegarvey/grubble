@@ -17,6 +17,9 @@ pub enum BumperError {
 
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
+
+    #[error("Invalid configuration: {0}")]
+    InvalidConfig(String),
 }
 
 pub type BumperResult<T> = Result<T, BumperError>;

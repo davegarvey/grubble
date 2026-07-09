@@ -156,8 +156,8 @@ fn test_dry_run_no_bump_exit_code() {
     cmd.arg("--dry-run");
     let output = cmd.output().expect("Failed to run grubble");
 
-    // Exit code 1 when no bump needed
-    assert_eq!(output.status.code(), Some(1));
+    // Exit code 0 when no bump needed (success is no-op)
+    assert_eq!(output.status.code(), Some(0));
 }
 
 #[test]
@@ -259,4 +259,210 @@ fn test_dry_run_verbose_output() {
     // Should show output in verbose mode (not raw mode)
     assert!(stdout.contains("Current version"));
     assert!(stdout.contains("Version bump"));
+}
+
+#[test]
+fn test_normal_run_no_bump_exit_code() {
+    // setup_test_repo already has a v1.0.0 tag and no further commits
+    let (_dir, mut cmd) = setup_test_repo();
+
+    // Default preset is git; no commits since v1.0.0 -> no bump needed
+    let output = cmd.output().expect("Failed to run grubble");
+
+    // v5 contract: success (including no-op) exits 0
+    assert_eq!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Should NOT contain "Error:" prefix on success
+    assert!(!stderr.starts_with("Error:"));
+}
+
+#[test]
+fn test_raw_no_further_bump_exit_code() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Cargo.toml present so rust preset can resolve a version
+    std::fs::write(
+        dir.path().join("Cargo.toml"),
+        "[package]\nversion = \"1.0.0\"\n",
+    )
+    .unwrap();
+
+    cmd.arg("--raw");
+    cmd.arg("--preset");
+    cmd.arg("rust");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    // v5 contract: --raw exits 0 when a version is produced
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "1.0.0");
+}
+
+#[test]
+fn test_error_exit_code() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // No Cargo.toml and no package.json anywhere; rust preset must fail
+    cmd.arg("--preset");
+    cmd.arg("rust");
+    // Avoid the "syncing package version" path; just request a bump that requires reading Cargo.toml
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "fix: something"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create fix commit");
+
+    let output = cmd.output().expect("Failed to run grubble");
+
+    // v5 contract: errors exit non-zero
+    assert_ne!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Error:"), "expected error on stderr, got: {}", stderr);
+}
+
+#[test]
+fn test_raw_with_rust_preset_reads_cargo_toml() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Create Cargo.toml with a version that does NOT match the git tag
+    std::fs::write(
+        dir.path().join("Cargo.toml"),
+        "[package]\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+
+    cmd.arg("--raw");
+    cmd.arg("--preset");
+    cmd.arg("rust");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // --raw --preset rust must read from Cargo.toml, not the v1.0.0 git tag
+    assert_eq!(stdout.trim(), "0.1.0");
+}
+
+#[test]
+fn test_raw_with_node_preset_reads_package_json() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Create package.json with a version that does NOT match the git tag
+    std::fs::write(
+        dir.path().join("package.json"),
+        "{\"name\": \"demo\", \"version\": \"2.3.4\"}\n",
+    )
+    .unwrap();
+
+    cmd.arg("--raw");
+    cmd.arg("--preset");
+    cmd.arg("node");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // --raw --preset node must read from package.json, not the v1.0.0 git tag
+    assert_eq!(stdout.trim(), "2.3.4");
+}
+
+#[test]
+fn test_raw_with_git_preset_unchanged() {
+    // Regression guard: --raw --preset git must still read from git tags
+    let (_dir, mut cmd) = setup_test_repo();
+
+    cmd.arg("--raw");
+    cmd.arg("--preset");
+    cmd.arg("git");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "1.0.0");
+}
+
+#[test]
+fn test_bump_type_json_output() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Add a feat commit
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "feat: add thing"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create feat commit");
+
+    cmd.arg("--bump-type");
+    cmd.arg("--output");
+    cmd.arg("json");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
+        .expect(&format!("stdout is not valid JSON: {}", stdout));
+
+    assert_eq!(parsed["bump_type"], "minor");
+    assert!(parsed["current_version"].is_string());
+    assert!(parsed["triggering_commits"].is_array());
+    assert!(parsed["unknown_commits"].is_array());
+}
+
+#[test]
+fn test_raw_json_output() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    std::fs::write(
+        dir.path().join("Cargo.toml"),
+        "[package]\nversion = \"1.0.0\"\n",
+    )
+    .unwrap();
+
+    cmd.arg("--raw");
+    cmd.arg("--preset");
+    cmd.arg("rust");
+    cmd.arg("--output");
+    cmd.arg("json");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
+        .expect(&format!("stdout is not valid JSON: {}", stdout));
+
+    assert_eq!(parsed["version"], "1.0.0");
+    assert_eq!(parsed["preset"], "rust");
+}
+
+#[test]
+fn test_json_output_invalid_with_dry_run() {
+    let (_dir, mut cmd) = setup_test_repo();
+
+    cmd.arg("--dry-run");
+    cmd.arg("--output");
+    cmd.arg("json");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_ne!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Invalid configuration") || stderr.contains("--output json"),
+        "expected validation error on stderr, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_json_output_invalid_with_normal_run() {
+    let (_dir, mut cmd) = setup_test_repo();
+
+    cmd.arg("--output");
+    cmd.arg("json");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_ne!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Invalid configuration") || stderr.contains("--output json"),
+        "expected validation error on stderr, got: {}",
+        stderr
+    );
 }

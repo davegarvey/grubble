@@ -1,3 +1,4 @@
+use crate::output::Output;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -50,6 +51,9 @@ pub struct Config {
 
     #[serde(skip)]
     pub raw: bool,
+
+    #[serde(skip)]
+    pub output: Output,
 }
 
 fn default_package_files() -> Vec<String> {
@@ -108,6 +112,7 @@ impl Default for Config {
             update_minor_tag: false,
             changelog: false,
             raw: false,
+            output: Output::Text,
         }
     }
 }

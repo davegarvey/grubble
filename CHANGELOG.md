@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] - Unreleased
+
+### Breaking
+
+- Exit code is now 0 for any successful run, including clean no-ops. Previously, exit 1 was used to signal "no bump needed"; exit 1 now means "error" only. Scripts that gate on the exit code of `grubble` or `grubble --dry-run` must switch to `grubble --bump-type` and check its stdout.
+- `grubble --raw` now honors `--preset`. `--raw --preset rust` reads from `Cargo.toml`; `--raw --preset node` reads from `package.json`; `--raw --preset git` reads from the latest tag. Previously, `--raw` always read from git tags.
+
+### Added
+
+- New `--output text|json` flag for `--bump-type` and `--raw`. Emits a stable JSON schema suitable for parsing from CI scripts. Rejected when combined with the normal run mode or `--dry-run`.
+- New `output` config field (CLI-only, not loaded from `.versionrc.json`).
+
+### Changed
+
+- GitHub Action's "Get current version" step uses a single `./grubble --raw --preset <preset>` invocation, removing preset-specific shell branches. The `set +e` + exit-code branching workaround around the bump step is removed.
+- GitHub Action requires `.sha256` checksums for release assets. A missing checksum is now a hard error (`::error::` + `exit 1`), previously a warning.
+- `--dry-run` and `--raw` always exit 0 when they complete successfully. Use `grubble --bump-type` for the "would a bump happen?" signal.
+
+### Removed
+
+- Stale `scripts/validate-release.sh` (referred to a non-existent `release.yml` and the old `bumper` binary).
+- The `|| true` / `set +e` / `GRUBBLE_EXIT` shell workarounds in `action.yml` and `version.yml` are no longer needed.
+
+### Notes
+
+- The `@v4` floating major tag and all `@v4.x.x` specific tags remain available indefinitely. The default floating tag shifts to `@v5` once v5 ships. Pin to `@v4` or `@v4.9.4` to stay on the v4 contract.
+- The in-flight OpenSpec change `fix-action-version-detection-and-output-mapping` is superseded by this release (the underlying problem is now fixed in `--raw`, not patched in the action shell).
+
 ## [4.9.4] - 2026-07-09
 
 ### Changed
@@ -25,7 +53,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- handle grubble exit 1 as clean no-op, not error
 - handle grubble exit 1 as clean no-op, not error
 
 ## [4.9.1] - 2026-06-29
