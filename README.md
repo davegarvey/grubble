@@ -4,457 +4,190 @@
 [![Version & Release](https://github.com/davegarvey/grubble/actions/workflows/version.yml/badge.svg)](https://github.com/davegarvey/grubble/actions/workflows/version.yml)
 [![Version](https://img.shields.io/github/v/release/davegarvey/grubble)](https://github.com/davegarvey/grubble/releases)
 [![Rust](https://img.shields.io/badge/rust-stable-orange)](https://www.rust-lang.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Automatic semantic versioning based on conventional commits, optimised for AI-generated commit messages.
+Automatic semantic versioning from conventional commits. Designed to be driven by AI-generated commit messages.
+
+## Why
+
+Grubble reads your commit history, applies conventional commit rules, and bumps the version in one command:
+
+- `feat:` → minor, `fix:` → patch, `!` / `BREAKING CHANGE` → major
+- Optionally writes the new version to `Cargo.toml` or `package.json`
+- Optionally generates a `CHANGELOG.md` (Keep a Changelog format)
+- Cuts and pushes tags, including floating `v4` / `v4.1` tags for GitHub Actions
+- Plays well with AI agents that emit conventional commits — see [`.github/prompts/sc.prompt.md`](.github/prompts/sc.prompt.md)
+
+## Quick Start
+
+```bash
+# Install
+cargo install grubble
+
+# Make some conventional commits
+git commit -m "feat: add login"
+git commit -m "fix: handle empty input"
+
+# Preview the next version
+grubble --dry-run
+
+# Release
+grubble --push --tag
+```
+
+For CI, jump to [GitHub Actions](#github-actions).
 
 ## Installation
 
-### Pre-built Binaries (Recommended)
+### Pre-built binaries
 
-Download from [GitHub Releases](https://github.com/davegarvey/grubble/releases):
+Download the latest release for your platform from [GitHub Releases](https://github.com/davegarvey/grubble/releases), or grab it directly:
 
 ```bash
 # Linux x86_64
-curl -L https://github.com/davegarvey/grubble/releases/download/v4.0.0/grubble-linux-x86_64.tar.gz | tar xz
+curl -L https://github.com/davegarvey/grubble/releases/latest/download/grubble-linux-x86_64.tar.gz | tar xz
+sudo mv grubble /usr/local/bin/
+
+# Linux ARM64
+curl -L https://github.com/davegarvey/grubble/releases/latest/download/grubble-linux-aarch64.tar.gz | tar xz
 sudo mv grubble /usr/local/bin/
 
 # macOS Intel
-curl -L https://github.com/davegarvey/grubble/releases/download/v4.0.0/grubble-macos-x86_64.tar.gz | tar xz
+curl -L https://github.com/davegarvey/grubble/releases/latest/download/grubble-macos-x86_64.tar.gz | tar xz
 sudo mv grubble /usr/local/bin/
 
 # macOS Apple Silicon
-curl -L https://github.com/davegarvey/grubble/releases/download/v4.0.0/grubble-macos-aarch64.tar.gz | tar xz
+curl -L https://github.com/davegarvey/grubble/releases/latest/download/grubble-macos-aarch64.tar.gz | tar xz
 sudo mv grubble /usr/local/bin/
 
-# Windows
-curl -L https://github.com/davegarvey/grubble/releases/download/v4.0.0/grubble-windows-x86_64.zip -o grubble.zip
-unzip grubble.zip
-# Add grubble.exe to PATH
+# Windows (PowerShell)
+Invoke-WebRequest -Uri https://github.com/davegarvey/grubble/releases/latest/download/grubble-windows-x86_64.zip -OutFile grubble.zip
+Expand-Archive grubble.zip
 ```
 
-### Cargo Install
+### Cargo
 
 ```bash
 cargo install grubble
 ```
 
-### GitHub Action
-
-```yaml
-uses: davegarvey/grubble@v4
-```
-
-#### Action Outputs
-
-The action exposes three outputs you can use in downstream steps:
-
-| Output | Description |
-|--------|-------------|
-| `version` | The new version (e.g. `1.2.3`). If no bump was needed, this is the same as `previous_version`. |
-| `previous_version` | The version before the bump. |
-| `bump_type` | Type of bump: `major`, `minor`, `patch`, or `none`. |
-
-```yaml
-- uses: davegarvey/grubble@v4
-  id: grubble
-  with:
-    push: true
-    tag: true
-- name: Deploy only on version bump
-  if: steps.grubble.outputs.bump_type != 'none'
-  run: echo "Deploying ${{ steps.grubble.outputs.version }}"
-```
-
-When no bump is needed (e.g. a push with only `refactor:` or `chore:` commits), the action exits cleanly with `bump_type=none` rather than failing.
-
-### From Source
+### From source
 
 ```bash
 git clone https://github.com/davegarvey/grubble.git
 cd grubble
 cargo build --release
-# Binary available at target/release/grubble
+# Binary at target/release/grubble
 ```
+
+### GitHub Action
+
+```yaml
+- uses: davegarvey/grubble@v4
+```
+
+The Action exposes three outputs for downstream steps:
+
+| Output | Description |
+| --- | --- |
+| `version` | The new version (e.g. `1.2.3`). If no bump was needed, this matches `previous-version`. |
+| `previous-version` | The version before the bump. |
+| `bump-type` | One of `major`, `minor`, `patch`, `none`. |
+
+When no bump is needed (e.g. only `refactor:` or `chore:` commits since the last tag), the Action exits cleanly with `bump-type=none` rather than failing.
 
 ## Usage
 
 ```bash
-# Run in your project root
-grubble
-
-# Push to remote
-grubble --push
-
-# Create git tag
-grubble --tag
-
-# Raw mode (output only version, dry run)
-grubble --raw
-
-# Check if bump is needed (exit 0 if needed, exit 1 if not)
-grubble --dry-run
-
-# Get the bump type (outputs: major, minor, patch, or none)
-grubble --bump-type
-
-# Use bump type in CI scripts
-if [ "$(grubble --bump-type)" != "none" ]; then
-  grubble --push --tag
-fi
-
-# Suppress commit list output
-grubble --quiet
-
-# Generate and maintain CHANGELOG.md
-grubble --changelog
-
-# With explicit options overrides
-grubble --tag --tag-prefix "release-v"
-grubble --commit-prefix "chore(release): bump"
-grubble --preset git --tag
-grubble --release-notes --tag
-grubble --package-files "Cargo.toml,client/Cargo.toml"
-grubble --git-user-name "My Name" --git-user-email "my@email.com"
-
-# Update major version tag (e.g., v4 -> v4.x.x)
-grubble --tag --update-major-tag
-
-# Update both major and minor version tags
-grubble --tag --update-major-tag --update-minor-tag --push
-
-# Show help
-grubble --help
+grubble                      # bump based on commits since the last tag
+grubble --push               # push the bump commit
+grubble --tag                # create a git tag for the new version
+grubble --changelog          # generate or update CHANGELOG.md
+grubble --update-major-tag   # also maintain a floating v4 tag
+grubble --raw                # print the new version, no changes
+grubble --dry-run            # exit 0 if a bump is needed, 1 otherwise
+grubble --bump-type          # print major | minor | patch | none
+grubble --quiet              # suppress the commit list
+grubble --help               # full flag reference
 ```
+
+Every flag has a corresponding option in `.versionrc.json` (see [Configuration](#configuration)). CLI flags override file values.
 
 ## Configuration
 
-Grubble can be configured using CLI arguments or a `.versionrc.json` file.
-
-### CLI Configuration (Recommended for CI/CD)
-
-All options can be passed as command-line arguments:
-
-```bash
-grubble \
-  --package-files Cargo.toml \
-  --commit-prefix "chore: bump version" \
-  --tag-prefix v \
-  --preset rust \
-  --push \
-  --tag \
-  --changelog \
-  --release-notes
-```
-
-### File-based Configuration
-
-Alternatively, create `.versionrc.json` in your project root:
+Grubble reads `.versionrc.json` from the project root. Flags and file values are merged, with flags winning.
 
 ```json
 {
-  "packageFiles": ["Cargo.toml", "client/Cargo.toml"],
-  "commitPrefix": "chore: bump version",
-  "tagPrefix": "v",
-  "push": false,
-  "tag": false,
-  "changelog": true,
   "preset": "rust",
-  "types": {
-    "config": "patch"
-  }
+  "packageFiles": ["Cargo.toml"],
+  "tagPrefix": "v",
+  "commitPrefix": "chore(release): bump",
+  "tag": true,
+  "push": true,
+  "changelog": true
 }
 ```
 
-### Configuration Options
+| Option | CLI flag | Default | Description |
+| --- | --- | --- | --- |
+| `preset` | `--preset` | `git` | Versioning strategy: `git`, `rust`, or `node`. |
+| `packageFiles` | `--package-files` | `[]` | Comma-separated files to update (for `rust` / `node`). |
+| `tagPrefix` | `--tag-prefix` | `v` | Prefix for git tags. |
+| `commitPrefix` | `--commit-prefix` | `chore: bump version` | Prefix for the bump commit message. |
+| `tag` | `--tag` | `false` | Create a git tag for the new version. |
+| `push` | `--push` | `false` | Push the commit (and tag) to the remote. |
+| `releaseNotes` | `--release-notes` (`-r`) | `false` | Include release notes in the tag annotation. Requires `tag: true`. |
+| `changelog` | `--changelog` | `false` | Generate or update `CHANGELOG.md`. |
+| `updateMajorTag` | `--update-major-tag` | `false` | Maintain a floating `v4` tag pointing to the latest `v4.x.x`. |
+| `updateMinorTag` | `--update-minor-tag` | `false` | Maintain a floating `v4.1` tag pointing to the latest `v4.1.x`. |
+| `gitUserName` | `--git-user-name` | `grubble-bot` | Identity used for the bump commit when no local git user is configured. |
+| `gitUserEmail` | `--git-user-email` | `grubble-bot@noreply.local` | Email used for the bump commit when no local git user is configured. |
+| `types` | — | see [Commit Types](#commit-types) | Per-type bump behavior. Valid values: `major`, `minor`, `patch`, `none`. |
 
-- **`packageFiles`**: Array of package files to update (default: `[]`)
-- **`commitPrefix`**: Prefix for version bump commits (default: `"chore: bump version"`)
-- **`tagPrefix`**: Prefix for git tags (default: `"v"`)
-- **`push`**: Whether to push commits/tags to remote (default: `false`)
-- **`tag`**: Whether to create git tags for versions (default: `false`)
-- **`changelog`**: Generate and maintain a CHANGELOG.md file following "Keep a Changelog" format (default: `false`)
-- **`updateMajorTag`**: Update major version tag (e.g., v4 pointing to latest v4.x.x) (default: `false`)
-- **`updateMinorTag`**: Update minor version tag (e.g., v4.1 pointing to latest v4.1.x) (default: `false`)
-- **`gitUserName`**: Git user name for commits (default: `"grubble-bot"`)
-- **`gitUserEmail`**: Git user email for commits (default: `"grubble-bot@noreply.local"`)
-  - *Note: These values are only used when no local git user.name/email configuration exists in the repository. If git config is already set locally, these values are ignored. For CI/CD environments, configure these to match your platform's bot user (e.g., GitHub Actions bot, GitLab CI bot, etc.).*
-- **`preset`**: Versioning strategy to use (default: `"git"`). Options:
-  - `"rust"`: Updates `Cargo.toml` version field
-  - `"git"`: Tracks version via git tags only (no file updates)
-  - `"node"`: Updates `package.json` version field
-- **`types`**: Object mapping commit types to version bump behavior (default: see Commit Types section). Valid values: `"major"`, `"minor"`, `"patch"`, `"none"`
-  - *Example*: `{"config": "patch", "revert": "none"}`
+If your repo has a local `user.name` / `user.email` set, grubble uses those and ignores `gitUserName` / `gitUserEmail`. In CI, set these to match your bot user (e.g. `github-actions[bot]`).
 
 ## Versioning Strategies
 
-Grubble supports different versioning strategies depending on your project type:
+The `preset` option controls what files grubble writes.
 
-### Rust Projects (`preset: "rust"`)
+- **`git`** (default) — tracks versions via tags only. No files are modified. Use this for monorepos or projects with their own versioning scheme.
+- **`rust`** — updates the `version` field in `Cargo.toml` and refreshes `Cargo.lock`. Pairs with `cargo publish`.
+- **`node`** — updates the `version` field in `package.json` and `package-lock.json`. Pairs with `npm publish`.
 
-**Best for**: Rust applications and libraries
+When switching from `git` to a file-based preset, or when a package file is behind the latest tag, grubble first syncs the file to the tag (with a `chore: sync package version to v...` commit) and then proceeds with the normal bump.
 
-**What it does**:
+## Major / Minor Tag Tracking
 
-- Updates the `version` field in `Cargo.toml`
-- Automatically updates `Cargo.lock` if present (recommended for binary crates)
-- Uses semantic versioning (major.minor.patch)
-- Integrates with Cargo's package management
+When `updateMajorTag` is enabled, grubble maintains a lightweight tag that follows the latest release in its range:
 
-**Example usage**:
+- `v4` → latest `v4.x.x`
+- `v4.1` → latest `v4.1.x` (additionally requires `updateMinorTag`)
 
-```bash
-grubble --preset rust --push --tag
-```
-
-**When to use**: For Rust projects. Automatically updates your Cargo.toml and works seamlessly with `cargo publish`.
-
-### Node.js Projects (`preset: "node"`)
-
-**Best for**: JavaScript/TypeScript applications and packages
-
-**What it does**:
-
-- Updates the `version` field in `package.json`
-- Updates `package-lock.json` if present
-- Compatible with npm/yarn ecosystem
-
-**Example usage**:
+This is the convention GitHub Actions use, so consumers can reference `uses: owner/repo@v4` and automatically get the latest v4 release.
 
 ```bash
-grubble --preset node --push --tag
-```
-
-**When to use**: For Node.js projects. Automatically updates your package.json and works seamlessly with npm/yarn publishing.
-
-### Git-only Projects (`preset: "git"`)
-
-**Best for**: Projects that don't need file-based versioning
-
-**What it does**:
-
-- Only creates git tags for versioning
-- No files are modified
-- Tracks versions purely through git history
-
-**Example usage**:
-
-```bash
-grubble --preset git --push --tag
-```
-
-**When to use**: Default choice for projects that don't need file-based versioning. Useful for monorepos or projects with custom versioning schemes.
-
-### Custom Strategies
-
-The strategy system is designed to be extensible. You can implement custom strategies for other languages or build systems by:
-
-1. Creating a new strategy struct that implements the `Strategy` trait
-2. Adding it to the strategy loader in `src/strategy.rs`
-3. Using it via configuration: `"preset": "your-custom-strategy"`
-
-This allows grubble to work with Python projects, Go modules, Docker-based versioning, or any other versioning scheme your project requires.
-
-### Package Version Syncing
-
-When switching from the `git` strategy (tag-only) to file-based strategies like `node` or `rust`, or if package files are outdated compared to existing tags, Grubble automatically syncs the package versions:
-
-- Compares the current package file version against the latest git tag
-- If the package version is behind, updates the package files to match the tag version
-- Commits the sync with a descriptive message (e.g., "chore: sync package version to v1.2.3")
-- Then proceeds with normal versioning logic based on recent commits
-
-This ensures version consistency across strategies and prevents conflicts when creating new tags.
-
-## Major/Minor Version Tag Tracking
-
-**Best for**: Maintainers of GitHub Actions, reusable workflows, or libraries where users reference by major version
-
-### What It Does
-
-When enabled, Grubble maintains "floating" major (and optionally minor) version tags that always point to the latest release in that version range:
-
-- **Major tag** (e.g., `v4`) → always points to latest `v4.x.x` release
-- **Minor tag** (e.g., `v4.1`) → always points to latest `v4.1.x` release
-
-This follows GitHub Actions best practices where users can reference `uses: owner/repo@v4` to automatically get the latest v4 release without manually updating to each new patch version.
-
-### Usage
-
-**CLI:**
-
-```bash
-# Update major version tag only
-grubble --tag --push --update-major-tag
-
-# Update both major and minor version tags
 grubble --tag --push --update-major-tag --update-minor-tag
 ```
 
-**GitHub Action:**
-
-```yaml
-- uses: davegarvey/grubble@v4
-  with:
-    tag: true
-    push: true
-    update-major-tag: true
-```
-
-*Note: Grubble itself uses major version tag tracking in its release workflow, so you can reference `uses: davegarvey/grubble@v4` to automatically get the latest v4.x.x release.*
-
-**Configuration file (.versionrc.json):**
-
-```json
-{
-  "tag": true,
-  "push": true,
-  "updateMajorTag": true,
-  "updateMinorTag": false
-}
-```
-
-### How It Works
-
-1. Creates the standard semantic version tag (e.g., `v4.2.3`)
-2. Updates or creates the major version tag (`v4`) pointing to the same commit
-3. Optionally updates the minor version tag (`v4.2`) pointing to the same commit
-4. Force-pushes tags to update them on the remote
-
-### When to Use
-
-✅ **Use major version tracking when:**
-
-- Publishing GitHub Actions for users to reference by major version
-- Maintaining libraries where users want automatic patch updates
-- Following semantic versioning with stable major version APIs
-
-⚠️ **Consider the implications:**
-
-- Force-pushing tags can affect users who have those tags locally
-- Users pinned to major versions will automatically get updates
-- Major version tags are lightweight (not annotated) by design
-- Requires explicit opt-in to avoid unintended behavior
-
-### Best Practices
-
-- **Document clearly**: Let users know they can use major version references
-- **Test thoroughly**: Ensure patch/minor updates won't break users on major version pins
-- **Semantic versioning**: Only use this if you follow semver strictly (breaking changes = major bump)
-- **CI/CD**: Automate this in your release workflow for consistency
-- **GitHub Actions**: Essential for action maintainers to provide a good user experience
+These tags are force-pushed. Anyone who has them checked out locally will need to re-fetch. Only enable this if you follow semver strictly — a breaking change bumps the major and consumers pinned to the old `v4` will pick it up.
 
 ## Changelog Generation
 
-**Best for**: Projects that want automated, standardized changelogs
+`grubble --changelog` writes a `CHANGELOG.md` in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format:
 
-### What It Does
+- `feat:` → **Added**
+- `fix:` → **Fixed**
+- `perf:`, `refactor:` → **Changed**
+- `revert:` → **Removed**
+- `security:` → **Security**
+- Breaking changes → **Changed** with a **BREAKING:** prefix
 
-When enabled, Grubble automatically generates and maintains a `CHANGELOG.md` file following the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format:
-
-- Categorizes commits into standard sections (Added, Changed, Fixed, etc.)
-- Groups changes by semantic category based on commit type
-- Maintains chronological version history
-- Marks breaking changes clearly
-- Follows industry-standard format for readability
-
-### Usage
-
-**CLI:**
-
-```bash
-# Enable changelog generation
-grubble --changelog --tag --push
-
-# Combine with other options
-grubble --changelog --preset rust --tag
-```
-
-**GitHub Action:**
-
-```yaml
-- uses: davegarvey/grubble@v4
-  with:
-    changelog: true
-    tag: true
-    push: true
-```
-
-**Configuration file (.versionrc.json):**
-
-```json
-{
-  "changelog": true,
-  "tag": true,
-  "push": true
-}
-```
-
-### Commit Type Mapping
-
-Commits are automatically categorized based on their conventional commit type:
-
-- `feat:` → **Added** section
-- `fix:` → **Fixed** section
-- `perf:`, `refactor:` → **Changed** section
-- `revert:` → **Removed** section
-- `security:` → **Security** section
-- Breaking changes (with `!` or `BREAKING CHANGE`) → **Changed** section with **BREAKING:** prefix
-
-### Example Output
-
-```markdown
-## [1.2.0] - 2025-12-16
-
-### Added
-
-- Add user authentication system
-- Add support for custom themes
-
-### Fixed
-
-- Fix memory leak in cache handler
-- Fix incorrect date formatting
-
-### Changed
-
-- **BREAKING:** Refactor API endpoints to use REST conventions
-```
-
-### When to Use
-
-✅ **Use changelog generation when:**
-
-- You want automated, standardized release notes
-- Following Keep a Changelog format for consistency
-- Need human-readable project history
-- Publishing libraries or tools with user-facing changes
-
-⚠️ **Consider:**
-
-- The changelog will be committed with version bump commits
-- Format follows conventional commit types strictly
-- Changes are grouped by semantic category, not chronologically
-
-## Best Practices
-
-- **Branch Protection**: Protect your main branch and require CI checks to pass
-- **Conventional Commits**: Ensure all commits follow [conventional commit format](https://www.conventionalcommits.org/en/v1.0.0/)
-- **Monorepos**: Use `packageFiles` array for multiple packages
-- **CI Permissions**: Grant write access to contents/commits for automated releases
-
-### Local Git Hooks
-
-Run once to enable the shared hooks path:
-
-```bash
-git config core.hooksPath scripts/hooks
-```
-
-The pre-commit hook runs `cargo fmt --all` (fixes formatting) and `cargo clippy --all-targets --all-features -- -D warnings` so commits fail early if code would break CI checks. You can temporarily skip steps with `SKIP_FMT=1` or `SKIP_CLIPPY=1`, and opt into running tests with `RUN_TESTS=1`.
+The changelog is committed as part of the release.
 
 ## GitHub Actions
 
-### Recommended: Use GitHub Action (Simplest)
+The Action downloads a pre-built binary, runs the bump, and exposes the new version as outputs. It is the simplest way to wire grubble into your release flow.
 
 ```yaml
 name: Release
@@ -471,19 +204,21 @@ jobs:
       contents: write
       pull-requests: read
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - uses: davegarvey/grubble@v4
-      with:
-        push: true
-        tag: true
-        update-major-tag: true  # Maintain v4 pointing to latest v4.x.x
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: davegarvey/grubble@v4
+        with:
+          push: true
+          tag: true
+          update-major-tag: true
 ```
 
-### Alternative: Manual Setup
+The `davegarvey/grubble@v4` pin floats to the latest v4.x.x release. Pin to a specific tag (e.g. `@v4.9.4`) if you need the release frozen.
 
-If you prefer more control over the process:
+### Manual setup
+
+Use this when you want to run tests and linting before the bump, or when self-hosted runners can't reach GitHub Releases.
 
 ```yaml
 name: Release
@@ -497,154 +232,147 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
-      contents: write      # Required for pushing commits/tags
-      pull-requests: read  # Required for PR info
+      contents: write
+      pull-requests: read
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # Required for commit analysis
-    - name: Setup Rust
-      uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        toolchain: stable
-    - name: Run tests
-      run: cargo test
-    - name: Run clippy
-      run: cargo clippy -- -D warnings
-    - name: Install grubble
-      run: cargo install grubble
-    - name: Bump version and release
-      run: |
-        grubble \
-          --push \
-          --tag \
-          --git-user-name "github-actions[bot]" \
-          --git-user-email "41898282+github-actions[bot]@users.noreply.github.com"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      - run: cargo test
+      - run: cargo clippy -- -D warnings
+      - name: Bump version and release
+        run: |
+          grubble \
+            --preset rust \
+            --push \
+            --tag \
+            --update-major-tag \
+            --git-user-name "github-actions[bot]" \
+            --git-user-email "41898282+github-actions[bot]@users.noreply.github.com"
 ```
 
-### CI Best Practices
+CI checklist:
 
-- **Permissions**: Add `contents: write` permission for automated commits/tags
-- **Branch Protection**: Require CI checks and restrict direct pushes to main
-- **Testing**: Always run `cargo test` and `cargo clippy` before releasing
-- **Fetch Depth**: Use `fetch-depth: 0` for complete commit history analysis
+- Grant `contents: write` so the workflow can push commits and tags.
+- Use `fetch-depth: 0` on `actions/checkout` so grubble can see the full history.
+- Pin the major version (`@v4`) unless you want the release frozen.
+- Use the GitHub Action unless you need custom logic between the lint and the bump.
 
-## CI/CD Integration
+## CI/CD Patterns
 
-### Checking for Bumps in CI
+### Skip the bump when nothing changed
 
-Use `--dry-run` to check if a version bump is needed without making changes:
-
-```yaml
-- name: Check for version bump
-  id: version
-  run: |
-    if grubble --dry-run --preset node; then
-      echo "BUMP_NEEDED=true" >> $GITHUB_ENV
-    fi
-```
-
-Exit codes:
-- **0**: Version bump is needed
-- **1**: No version bump needed
-
-### Getting Bump Type
-
-Use `--bump-type` to get the type of bump that would occur:
+`grubble --dry-run` exits 0 when a bump is needed and 1 otherwise. Use it as a gate:
 
 ```bash
-BUMP=$(grubble --bump-type --preset node)
-echo "Bump type: $BUMP"
-# Outputs: major, minor, patch, or none
-```
-
-### Conditional Deployment
-
-```bash
-# Only deploy if there's a version bump
-if grubble --dry-run --preset node; then
-  grubble --push --tag --preset node
-  # ... deployment steps
+if grubble --dry-run --preset rust; then
+  grubble --push --tag --preset rust
 fi
 ```
 
-### Combining with Other Tools
+### Read the bump type
+
+`grubble --bump-type` prints `major`, `minor`, `patch`, or `none`. Use it to drive conditional logic:
 
 ```bash
-# Get the new version before bumping
-NEW_VERSION=$(grubble --raw --preset node)
-echo "Releasing version $NEW_VERSION"
+case "$(grubble --bump-type)" in
+  major) notify "breaking release" ;;
+  minor) notify "feature release" ;;
+  patch) : ;;                  # silent patch
+  none)   exit 0 ;;
+esac
+```
 
-# Perform the actual bump
-grubble --push --tag --preset node
+### Read the new version
 
-# Use the version in notifications
+`grubble --raw` prints the version that would be released without making changes. Pair it with `gh release create` or a deploy step:
+
+```bash
+NEW_VERSION=$(grubble --raw --preset rust)
 gh release create "v$NEW_VERSION" --title "Release v$NEW_VERSION"
 ```
 
 ## How It Works
 
-1. Syncs package versions if behind latest tag (for file-based strategies)
-2. Analyzes commits since last tag
-3. Determines version bump (major/minor/patch) based on conventional commits
-4. Updates package files
-5. Optionally generates/updates CHANGELOG.md
-6. Creates git commit
-7. Optionally creates git tag
-8. Optionally pushes to remote
+1. Sync package files to the latest tag (for `rust` / `node` presets).
+2. Analyze commits since the last tag using conventional commit rules.
+3. Pick the highest bump (`major` / `minor` / `patch` / `none`).
+4. Update package files and `CHANGELOG.md` if configured.
+5. Create the bump commit.
+6. Create tags, including `v4` / `v4.1` floating tags if enabled.
+7. Push to the remote if configured.
 
 ## Commit Types
 
-- `feat:` → minor bump
-- `fix:` → patch bump
-- Any type with `!` or `BREAKING CHANGE` → major bump
-- `docs:`, `test:`, `chore:`, `ci:`, `build:`, `style:`, `refactor:`, `perf:` → no bump
+Default mappings (override with the `types` option in `.versionrc.json`):
 
-*Note: These are the default mappings. You can customize version bump behavior for any commit type using the `types` configuration in `.versionrc.json`.*
+| Commit | Bump |
+| --- | --- |
+| `!` or `BREAKING CHANGE` | major |
+| `feat:` | minor |
+| `fix:` | patch |
+| `perf:`, `refactor:` | none by default; usually remapped to `patch` or `minor` |
+| `docs:`, `test:`, `chore:`, `ci:`, `build:`, `style:` | none |
+
+Custom mapping example:
+
+```json
+{
+  "types": {
+    "perf": "minor",
+    "revert": "none"
+  }
+}
+```
 
 ## Troubleshooting
 
-### Common Issues
-
 **"Author identity unknown"**
 
-- **Solution**: Configure git identity in CI before running grubble
-- **Example**: Add git config step as shown in CI workflow
+Set a git identity in the workflow before running grubble:
+
+```yaml
+- run: |
+    git config user.name "github-actions[bot]"
+    git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+```
+
+The `--git-user-name` and `--git-user-email` flags are ignored when a local `user.name` / `user.email` is already set.
 
 **"grubble: command not found"**
 
-- **Solution**: Install grubble before running: `cargo install grubble`
-- **Why**: Ensure the binary is in PATH or use full path
+Make sure grubble is on `PATH`. If you used `cargo install --root <dir>`, add `<dir>/bin` to `PATH`.
 
 **No version bump on merge**
 
-- **Check**: Ensure PR contains conventional commits with `feat:`, `fix:`, etc.
-- **Check**: Verify CI has write permissions to repository
-- **Check**: Confirm `fetch-depth: 0` in checkout action
+- Confirm the merged commits include `feat:` / `fix:` (or another type mapped to a bump).
+- Confirm the workflow has `contents: write`.
+- Confirm `actions/checkout` uses `fetch-depth: 0`.
 
 **Invalid config file**
 
-- **Solution**: Ensure `.versionrc.json` contains valid JSON
-- **Note**: Empty or invalid files fall back to defaults with a warning
+Empty or invalid `.versionrc.json` falls back to defaults with a warning. Run grubble once to see the warning, then fix the JSON.
 
 **Package file not found**
 
-- **Solution**: Use `--package-files` to specify correct file paths for your project type
-- **Check**: Verify file exists and contains valid `version` field
+- Check that `--package-files` points to files relative to the repo root.
+- For multi-package repos, pass each file: `--package-files "Cargo.toml,client/Cargo.toml"`.
 
-**Action step fails with "Invalid format" in `$GITHUB_OUTPUT`**
+**"Invalid format" in `$GITHUB_OUTPUT`**
 
-- **Fixed in**: the next release after v4.9.3 (see [#54](https://github.com/davegarvey/grubble/issues/54))
-- **Cause**: An internal `$(... || echo ...)` pattern captured both the version printed on stdout and the fallback value, producing a second line that GitHub rejected.
-- **Resolution**: Use `davegarvey/grubble@v4` (movable) to pick up the fix automatically, or pin to a release ≥ v4.9.4 once it ships.
+Fixed in v4.9.4 (see [#54](https://github.com/davegarvey/grubble/issues/54)). Bump the Action to `davegarvey/grubble@v4` (movable) to pick up the fix, or pin to a release ≥ v4.9.4 once you have a chance to verify.
 
-### Getting Help
+## Contributing
 
-- Check commit format with conventional commits specification
-- Verify CI permissions and branch protection rules
-- Test locally with `grubble` for debugging (pushing is disabled by default)
-- Run `cargo test` to verify your project setup
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, commit guidelines, and the release process.
+
+## License
+
+[MIT](LICENSE).
 
 ## For AI Users
 
-This tool is optimised for AI-generated commit messages that follow conventional commit format. See [.github/prompts/sc.prompt.md](.github/prompts/sc.prompt.md) for an example prompt that generates commits compatible with grubble.
+This tool is built for AI-generated commits that follow the conventional commit format. See [`.github/prompts/sc.prompt.md`](.github/prompts/sc.prompt.md) for a prompt that produces commits compatible with grubble.

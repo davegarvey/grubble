@@ -116,11 +116,13 @@ cargo fmt --all
 
 ### Pre-commit Hooks
 
-The project uses Husky for pre-commit hooks. Install dependencies and set up hooks:
+The project ships a plain git hook in `scripts/hooks/pre-commit`. Enable it once after cloning:
 
 ```bash
-npm install
+git config core.hooksPath scripts/hooks
 ```
+
+The hook runs `cargo fmt --all` and `cargo clippy --all-targets --all-features -- -D warnings`, so commits fail early if code would break CI. Skip individual steps with `SKIP_FMT=1` or `SKIP_CLIPPY=1`, and opt into running tests with `RUN_TESTS=1`.
 
 ## Commit Guidelines
 
@@ -201,9 +203,20 @@ src/
 ├── git.rs           # Git operations
 ├── strategy/        # Version strategy implementations
 │   ├── git.rs
-│   └── node.rs
+│   ├── node.rs
+│   └── rust.rs
 └── error.rs         # Error types
 ```
+
+## Adding a Custom Strategy
+
+Strategies encapsulate "where does the version live" for a project. To add one (e.g. for Python `pyproject.toml` or Go modules):
+
+1. Add a new file in `src/strategy/` implementing the `Strategy` trait defined in `src/strategy.rs`.
+2. Register it in the strategy loader in `src/strategy.rs`.
+3. Reference it from configuration with `"preset": "your-preset"`.
+
+Use the existing `rust.rs` and `node.rs` strategies as references — they are thin wrappers around read/update of a single version field.
 
 ## Configuration Files
 
