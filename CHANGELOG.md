@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.9.4] - 2026-07-09
+
+### Changed
+
+- Merge pull request #55 from davegarvey/fix/action-output-corruption
+
+### Fixed
+
+- prevent double-capture in --raw fallback corrupting GITHUB_OUTPUT
+
 ## [4.9.3] - 2026-07-07
 
 ### Fixed
