@@ -231,10 +231,16 @@ runs:
             CURRENT_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2 2>/dev/null || echo "0.0.0")
           fi
         else
+          # --raw always prints a version on stdout, but exits 1 (NoBump) when no
+          # tag exists yet. Capture stdout regardless of exit code, and only
+          # fall back to 0.0.0 when stdout is empty.
           if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-            CURRENT_VERSION=$(./grubble.exe --raw 2>/dev/null || echo "0.0.0")
+            CURRENT_VERSION=$(./grubble.exe --raw 2>/dev/null) || true
           else
-            CURRENT_VERSION=$(./grubble --raw 2>/dev/null || echo "0.0.0")
+            CURRENT_VERSION=$(./grubble --raw 2>/dev/null) || true
+          fi
+          if [ -z "$CURRENT_VERSION" ]; then
+            CURRENT_VERSION="0.0.0"
           fi
         fi
         echo "previous_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
@@ -362,10 +368,17 @@ runs:
         if [ -n "${{ inputs.commit-prefix }}" ]; then
           READ_ARGS="$READ_ARGS --commit-prefix \"${{ inputs.commit-prefix }}\""
         fi
+        # --raw always prints a version on stdout, but exits 1 (NoBump) when no
+        # further bump is needed post-commit. Capture stdout regardless of exit
+        # code, and only fall back to the previous version when stdout is empty
+        # (i.e. a true error such as the binary being missing).
         if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-          NEW_VERSION=$(./grubble.exe $READ_ARGS 2>/dev/null || echo "${{ steps.current.outputs.previous_version }}")
+          NEW_VERSION=$(./grubble.exe $READ_ARGS 2>/dev/null) || true
         else
-          NEW_VERSION=$(./grubble $READ_ARGS 2>/dev/null || echo "${{ steps.current.outputs.previous_version }}")
+          NEW_VERSION=$(./grubble $READ_ARGS 2>/dev/null) || true
+        fi
+        if [ -z "$NEW_VERSION" ]; then
+          NEW_VERSION="${{ steps.current.outputs.previous_version }}"
         fi
 
         echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT

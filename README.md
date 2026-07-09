@@ -44,6 +44,29 @@ cargo install grubble
 uses: davegarvey/grubble@v4
 ```
 
+#### Action Outputs
+
+The action exposes three outputs you can use in downstream steps:
+
+| Output | Description |
+|--------|-------------|
+| `version` | The new version (e.g. `1.2.3`). If no bump was needed, this is the same as `previous_version`. |
+| `previous_version` | The version before the bump. |
+| `bump_type` | Type of bump: `major`, `minor`, `patch`, or `none`. |
+
+```yaml
+- uses: davegarvey/grubble@v4
+  id: grubble
+  with:
+    push: true
+    tag: true
+- name: Deploy only on version bump
+  if: steps.grubble.outputs.bump_type != 'none'
+  run: echo "Deploying ${{ steps.grubble.outputs.version }}"
+```
+
+When no bump is needed (e.g. a push with only `refactor:` or `chore:` commits), the action exits cleanly with `bump_type=none` rather than failing.
+
 ### From Source
 
 ```bash
@@ -608,6 +631,12 @@ gh release create "v$NEW_VERSION" --title "Release v$NEW_VERSION"
 
 - **Solution**: Use `--package-files` to specify correct file paths for your project type
 - **Check**: Verify file exists and contains valid `version` field
+
+**Action step fails with "Invalid format" in `$GITHUB_OUTPUT`**
+
+- **Fixed in**: the next release after v4.9.3 (see [#54](https://github.com/davegarvey/grubble/issues/54))
+- **Cause**: An internal `$(... || echo ...)` pattern captured both the version printed on stdout and the fallback value, producing a second line that GitHub rejected.
+- **Resolution**: Use `davegarvey/grubble@v4` (movable) to pick up the fix automatically, or pin to a release ≥ v4.9.4 once it ships.
 
 ### Getting Help
 
