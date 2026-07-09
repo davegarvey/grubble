@@ -191,6 +191,32 @@ Grubble uses automated releases based on conventional commits:
 
 Releases are automatically created via GitHub Actions when changes are merged to `main`.
 
+### Don't manually bump the package file in a release PR
+
+The `Version & Release` workflow (`version.yml`) runs `grubble` after the merge, which:
+
+1. Reads the **latest git tag** as the base version
+2. Examines **commits since that tag** for conventional-commit prefixes
+3. Computes the next version (e.g. `4.9.4` + `feat!:` → `5.0.0`)
+4. Updates `Cargo.toml` (or `package.json`), commits, and tags
+
+**Do not manually bump `Cargo.toml` or `package.json` in a release PR.** Manually setting the file to a version ahead of the latest tag is the "file ahead of tag" state, which `grubble` rejects with a clear error:
+
+```
+Error: Invalid configuration: package version 5.0.0 (in Cargo.toml) is 
+ahead of latest tag v4.9.4. Refusing to bump.
+
+To fix, align the file and tag. Either:
+  - revert Cargo.toml to match the latest tag, or
+  - create the missing tag: git tag v5.0.0 && git push origin v5.0.0
+```
+
+If you need to make a "manual" version bump (e.g. for a compliance reason before tagging), do it the way the workflow would: create the tag yourself (`git tag v5.0.0 && git push origin v5.0.0`), let the file catch up via a follow-up commit, and let the next workflow run perform the next bump from that tag.
+
+### A note on patch releases after a breaking change
+
+If you merge a breaking change (e.g. v5.0.0) and then later need to ship a patch (v5.0.1) that contains only `fix:` commits, the workflow will correctly produce v5.0.1 — the latest tag is v5.0.0, the commits since v5.0.0 are `fix:`, the bump is patch. Do not manually set `Cargo.toml` to `5.0.1` "to help" the workflow; this triggers the same "file ahead of tag" error.
+
 ## Project Structure
 
 ```
