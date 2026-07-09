@@ -472,3 +472,105 @@ fn test_json_output_invalid_with_normal_run() {
         stderr
     );
 }
+
+#[test]
+fn test_file_ahead_of_tag_fails() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Add a fix commit so a bump would otherwise be triggered
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "fix: something"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create fix commit");
+
+    // Cargo.toml is AHEAD of the v1.0.0 tag — this is the v5.0.0 → v6.0.0 incident state
+    std::fs::write(
+        dir.path().join("Cargo.toml"),
+        "[package]\nversion = \"5.0.0\"\n",
+    )
+    .unwrap();
+
+    cmd.arg("--preset");
+    cmd.arg("rust");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    // Must fail (not silently use the file version as the bump base)
+    assert_ne!(output.status.code(), Some(0));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Error message must name both values and reference a fix path
+    assert!(
+        stderr.contains("5.0.0"),
+        "expected file version in error, got: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("1.0.0"),
+        "expected tag version in error, got: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("revert") || stderr.contains("tag"),
+        "expected fix-path keyword in error, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_file_behind_tag_syncs() {
+    // Regression guard: the existing sync-up behavior must still work
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Cargo.toml is BEHIND the v1.0.0 tag — should sync up
+    std::fs::write(
+        dir.path().join("Cargo.toml"),
+        "[package]\nversion = \"0.5.0\"\n",
+    )
+    .unwrap();
+
+    // Add a fix commit so the bump step actually runs
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "fix: something"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create fix commit");
+
+    cmd.arg("--preset");
+    cmd.arg("rust");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    // Sync-up must succeed; the file is then bumped from the tag version
+    assert_eq!(output.status.code(), Some(0));
+
+    // After the run, the file should have been synced to 1.0.0 then bumped to 1.0.1
+    let cargo_content = std::fs::read_to_string(dir.path().join("Cargo.toml")).unwrap();
+    assert!(
+        cargo_content.contains("1.0.1"),
+        "expected file synced+bumped to 1.0.1, got: {}",
+        cargo_content
+    );
+}
+
+#[test]
+fn test_file_ahead_of_tag_succeeds_in_raw_mode() {
+    // --raw is read-only; the bump-base check must NOT fire even when
+    // the file is ahead of the tag (otherwise --raw would be hostile)
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Cargo.toml ahead of tag
+    std::fs::write(
+        dir.path().join("Cargo.toml"),
+        "[package]\nversion = \"5.0.0\"\n",
+    )
+    .unwrap();
+
+    cmd.arg("--raw");
+    cmd.arg("--preset");
+    cmd.arg("rust");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "5.0.0");
+}

@@ -247,27 +247,48 @@ fn run() -> BumperResult<ExitCode> {
 
     let last_tag_version = git::get_last_tag_version(&config)?;
 
-    // Sync package version if behind latest tag (skip in read-only modes)
+    // Validate the file/tag relationship before any work that could mask the state.
+    // Read-only modes are exempt: --raw and --dry-run are for inspection.
     if !config.raw {
         if let Some(tag_ver) = last_tag_version {
-            if config.preset != "git" && current_version < tag_ver {
-                log(
-                    &format!(
-                        "Package version {} is behind latest tag version {}, syncing...",
-                        current_version, tag_ver
-                    ),
-                    is_raw,
-                );
-                let updated_files = strategy.update_files(&tag_ver)?;
-                if !updated_files.is_empty() {
-                    git::commit_changes(
-                        &format!("v{}", tag_ver),
-                        &updated_files,
-                        "chore: sync package version",
-                    )?;
-                    log(&format!("Synced package to version {}", tag_ver), is_raw);
+            if config.preset != "git" {
+                if current_version > tag_ver {
+                    let file_path = config
+                        .package_files
+                        .first()
+                        .map(String::as_str)
+                        .unwrap_or("(unknown)");
+                    return Err(BumperError::InvalidConfig(format!(
+                        "package version {} (in {}) is ahead of latest tag v{}. \
+                         Refusing to bump.\n\n\
+                         To fix, align the file and tag. Either:\n  - revert {} to match the latest tag, or\n  - create the missing tag: git tag v{} && git push origin v{}",
+                        current_version,
+                        file_path,
+                        tag_ver,
+                        file_path,
+                        current_version,
+                        current_version
+                    )));
                 }
-                current_version = tag_ver;
+                if current_version < tag_ver {
+                    log(
+                        &format!(
+                            "Package version {} is behind latest tag version {}, syncing...",
+                            current_version, tag_ver
+                        ),
+                        is_raw,
+                    );
+                    let updated_files = strategy.update_files(&tag_ver)?;
+                    if !updated_files.is_empty() {
+                        git::commit_changes(
+                            &format!("v{}", tag_ver),
+                            &updated_files,
+                            "chore: sync package version",
+                        )?;
+                        log(&format!("Synced package to version {}", tag_ver), is_raw);
+                    }
+                    current_version = tag_ver;
+                }
             }
         }
     }
