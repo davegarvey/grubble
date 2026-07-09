@@ -64,7 +64,7 @@ inputs:
     required: false
     default: 'false'
   dry-run:
-    description: 'Check if bump is needed without making changes (exit 0 if bump needed, 1 if not)'
+    description: 'Check if bump is needed without making changes. Does not modify any files; exit code 0 in all non-error cases. Use --bump-type to detect whether a bump would occur.'
     required: false
     default: 'false'
   bump-type-only:
@@ -165,27 +165,28 @@ runs:
       run: |
         echo "::group::Verify checksum"
         CHECKSUM_URL="https://github.com/davegarvey/grubble/releases/download/${{ steps.release.outputs.version }}/${{ steps.detect.outputs.archive }}.sha256"
-        
+
         if ! curl -sSL -f -o "${{ steps.detect.outputs.archive }}.sha256" "$CHECKSUM_URL"; then
-          echo "::warning::Failed to download checksum file, skipping verification"
-        else
-          if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-            # Windows verification
-            EXPECTED=$(cat "${{ steps.detect.outputs.archive }}.sha256" | awk '{print $1}')
-            ACTUAL=$(certutil -hashfile "${{ steps.detect.outputs.archive }}" SHA256 | findstr /v "hash" | findstr /v "CertUtil")
-            if [ "$EXPECTED" != "$ACTUAL" ]; then
-              echo "::error::Checksum verification failed"
-              exit 1
-            fi
-          else
-            # Unix verification
-            if ! shasum -a 256 -c "${{ steps.detect.outputs.archive }}.sha256"; then
-              echo "::error::Checksum verification failed"
-              exit 1
-            fi
-          fi
-          echo "✓ Checksum verified"
+          echo "::error::Failed to download checksum file from $CHECKSUM_URL"
+          exit 1
         fi
+
+        if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
+          # Windows verification
+          EXPECTED=$(cat "${{ steps.detect.outputs.archive }}.sha256" | awk '{print $1}')
+          ACTUAL=$(certutil -hashfile "${{ steps.detect.outputs.archive }}" SHA256 | findstr /v "hash" | findstr /v "CertUtil")
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Checksum verification failed"
+            exit 1
+          fi
+        else
+          # Unix verification
+          if ! shasum -a 256 -c "${{ steps.detect.outputs.archive }}.sha256"; then
+            echo "::error::Checksum verification failed"
+            exit 1
+          fi
+        fi
+        echo "✓ Checksum verified"
         echo "::endgroup::"
 
     - name: Extract binary (Unix)
@@ -211,37 +212,15 @@ runs:
       id: current
       shell: bash
       run: |
-        if [ "${{ inputs.preset }}" = "node" ]; then
-          if [ -n "${{ inputs.package-files }}" ]; then
-            FIRST_FILE=$(echo "${{ inputs.package-files }}" | cut -d',' -f1)
-            # Ensure relative path has ./ prefix for require() resolution
-            case "$FIRST_FILE" in
-              /*|./*|../*) ;;
-              *) FIRST_FILE="./$FIRST_FILE" ;;
-            esac
-            CURRENT_VERSION=$(node -p "require('$FIRST_FILE').version" 2>/dev/null || echo "0.0.0")
-          else
-            CURRENT_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0")
-          fi
-        elif [ "${{ inputs.preset }}" = "rust" ]; then
-          if [ -n "${{ inputs.package-files }}" ]; then
-            FIRST_FILE=$(echo "${{ inputs.package-files }}" | cut -d',' -f1)
-            CURRENT_VERSION=$(grep '^version' "$FIRST_FILE" | head -1 | cut -d'"' -f2 2>/dev/null || echo "0.0.0")
-          else
-            CURRENT_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2 2>/dev/null || echo "0.0.0")
-          fi
+        # --raw honors --preset (v5+). Pass through the preset; the binary
+        # resolves the current version from the correct source.
+        if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
+          CURRENT_VERSION=$(./grubble.exe --raw --preset "${{ inputs.preset }}" 2>/dev/null) || true
         else
-          # --raw always prints a version on stdout, but exits 1 (NoBump) when no
-          # tag exists yet. Capture stdout regardless of exit code, and only
-          # fall back to 0.0.0 when stdout is empty.
-          if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-            CURRENT_VERSION=$(./grubble.exe --raw 2>/dev/null) || true
-          else
-            CURRENT_VERSION=$(./grubble --raw 2>/dev/null) || true
-          fi
-          if [ -z "$CURRENT_VERSION" ]; then
-            CURRENT_VERSION="0.0.0"
-          fi
+          CURRENT_VERSION=$(./grubble --raw --preset "${{ inputs.preset }}" 2>/dev/null) || true
+        fi
+        if [ -z "$CURRENT_VERSION" ]; then
+          CURRENT_VERSION="0.0.0"
         fi
         echo "previous_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
@@ -254,11 +233,12 @@ runs:
         # Handle bump-type-only mode first
         if [ "${{ inputs.bump-type-only }}" = "true" ]; then
           if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-            ./grubble.exe --bump-type
+            BUMP_TYPE=$(./grubble.exe --bump-type)
           else
-            ./grubble --bump-type
+            BUMP_TYPE=$(./grubble --bump-type)
           fi
-          echo "bump_type=$(./grubble --bump-type)" >> $GITHUB_OUTPUT
+          echo "$BUMP_TYPE"
+          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
           exit 0
         fi
 
@@ -269,7 +249,12 @@ runs:
           else
             ./grubble --dry-run
           fi
-          echo "bump_type=$(./grubble --bump-type)" >> $GITHUB_OUTPUT
+          if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
+            BUMP_TYPE=$(./grubble.exe --bump-type)
+          else
+            BUMP_TYPE=$(./grubble --bump-type)
+          fi
+          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
           exit 0
         fi
 
@@ -329,32 +314,18 @@ runs:
           ARGS="$ARGS --changelog"
         fi
 
-        # Run grubble. Exit 1 = "no bump needed" (clean no-op), other non-0 = error.
-        set +e
+        # Run grubble. v5 contract: exit 0 = success (bumped or clean no-op),
+        # non-zero = error. set -e (default in composite action steps) handles
+        # the failure case automatically.
         if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-          OUTPUT=$(./grubble.exe $ARGS 2>&1)
-          GRUBBLE_EXIT=$?
+          ./grubble.exe $ARGS
         else
-          OUTPUT=$(./grubble $ARGS 2>&1)
-          GRUBBLE_EXIT=$?
-        fi
-        set -e
-
-        echo "$OUTPUT"
-
-        if [ $GRUBBLE_EXIT -eq 1 ]; then
-          # No bump needed — exit cleanly, not an error
-          echo "version=${{ steps.current.outputs.previous_version }}" >> $GITHUB_OUTPUT
-          echo "bump_type=none" >> $GITHUB_OUTPUT
-          echo "previous_version=${{ steps.current.outputs.previous_version }}" >> $GITHUB_OUTPUT
-          exit 0
-        elif [ $GRUBBLE_EXIT -ne 0 ]; then
-          echo "::error::Grubble command failed (exit $GRUBBLE_EXIT): $OUTPUT"
-          exit 1
+          ./grubble $ARGS
         fi
 
         # Get the new version — forward config flags so --raw uses the same preset and files.
         # Only version-relevant flags (not action flags like --push/--tag) to keep --raw a pure read.
+        # v5 contract: --raw exits 0 whenever a version is produced, so no exit-code handling needed.
         READ_ARGS="--raw"
         if [ -n "${{ inputs.preset }}" ]; then
           READ_ARGS="$READ_ARGS --preset ${{ inputs.preset }}"
@@ -368,14 +339,10 @@ runs:
         if [ -n "${{ inputs.commit-prefix }}" ]; then
           READ_ARGS="$READ_ARGS --commit-prefix \"${{ inputs.commit-prefix }}\""
         fi
-        # --raw always prints a version on stdout, but exits 1 (NoBump) when no
-        # further bump is needed post-commit. Capture stdout regardless of exit
-        # code, and only fall back to the previous version when stdout is empty
-        # (i.e. a true error such as the binary being missing).
         if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-          NEW_VERSION=$(./grubble.exe $READ_ARGS 2>/dev/null) || true
+          NEW_VERSION=$(./grubble.exe $READ_ARGS)
         else
-          NEW_VERSION=$(./grubble $READ_ARGS 2>/dev/null) || true
+          NEW_VERSION=$(./grubble $READ_ARGS)
         fi
         if [ -z "$NEW_VERSION" ]; then
           NEW_VERSION="${{ steps.current.outputs.previous_version }}"

@@ -12,10 +12,6 @@ pub mod node;
 pub mod rust;
 
 pub fn load_strategy(config: &Config) -> Box<dyn Strategy> {
-    if config.raw {
-        return Box::new(git::GitStrategy::new(config.clone()));
-    }
-
     match config.preset.as_str() {
         "node" => Box::new(node::NodeStrategy::new(config.clone())),
         "git" => Box::new(git::GitStrategy::new(config.clone())),

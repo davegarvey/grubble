@@ -6,12 +6,14 @@ mod changelog;
 mod config;
 mod error;
 mod git;
+mod output;
 mod strategy;
 mod versioner;
 
 use analyser::{analyse_commits, BumpType};
 use config::Config;
-use error::BumperResult;
+use error::{BumperError, BumperResult};
+use output::Output;
 use strategy::load_strategy;
 
 #[derive(Debug)]
@@ -107,6 +109,10 @@ struct Args {
     /// Does not modify any files or create commits/tags
     #[arg(long)]
     dry_run: bool,
+
+    /// Output format. Only valid with --bump-type or --raw.
+    #[arg(long, value_enum, default_value_t = Output::Text)]
+    output: Output,
 }
 
 fn log(msg: &str, is_raw: bool) {
@@ -115,15 +121,39 @@ fn log(msg: &str, is_raw: bool) {
     }
 }
 
+fn emit_raw(version: &versioner::Version, preset: &str, output: Output) {
+    if output == Output::Json {
+        let json = serde_json::json!({
+            "version": version.to_string(),
+            "preset": preset,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json).expect("failed to serialize raw JSON output")
+        );
+    } else {
+        println!("{}", version);
+    }
+}
+
 fn run() -> BumperResult<ExitCode> {
     let args = Args::parse();
 
     let is_bump_type = args.bump_type;
     let is_dry_run = args.dry_run;
+    let is_raw = args.raw;
+    let output = args.output;
+
+    // --output json is only valid with --bump-type or --raw
+    if output == Output::Json && !is_bump_type && !is_raw {
+        return Err(BumperError::InvalidConfig(
+            "--output json is only valid with --bump-type or --raw".to_string(),
+        ));
+    }
 
     // Handle --bump-type mode
     if is_bump_type {
-        run_bump_type(&args)?;
+        run_bump_type(&args, output)?;
         return Ok(ExitCode::Ok);
     }
 
@@ -178,8 +208,6 @@ fn run() -> BumperResult<ExitCode> {
 
     let quiet = args.quiet;
 
-    let is_raw = args.raw;
-
     // Force settings for raw mode
     if is_raw {
         config.raw = true;
@@ -219,26 +247,28 @@ fn run() -> BumperResult<ExitCode> {
 
     let last_tag_version = git::get_last_tag_version(&config)?;
 
-    // Sync package version if behind latest tag
-    if let Some(tag_ver) = last_tag_version {
-        if config.preset != "git" && current_version < tag_ver {
-            log(
-                &format!(
-                    "Package version {} is behind latest tag version {}, syncing...",
-                    current_version, tag_ver
-                ),
-                is_raw,
-            );
-            let updated_files = strategy.update_files(&tag_ver)?;
-            if !updated_files.is_empty() {
-                git::commit_changes(
-                    &format!("v{}", tag_ver),
-                    &updated_files,
-                    "chore: sync package version",
-                )?;
-                log(&format!("Synced package to version {}", tag_ver), is_raw);
+    // Sync package version if behind latest tag (skip in read-only modes)
+    if !config.raw {
+        if let Some(tag_ver) = last_tag_version {
+            if config.preset != "git" && current_version < tag_ver {
+                log(
+                    &format!(
+                        "Package version {} is behind latest tag version {}, syncing...",
+                        current_version, tag_ver
+                    ),
+                    is_raw,
+                );
+                let updated_files = strategy.update_files(&tag_ver)?;
+                if !updated_files.is_empty() {
+                    git::commit_changes(
+                        &format!("v{}", tag_ver),
+                        &updated_files,
+                        "chore: sync package version",
+                    )?;
+                    log(&format!("Synced package to version {}", tag_ver), is_raw);
+                }
+                current_version = tag_ver;
             }
-            current_version = tag_ver;
         }
     }
 
@@ -266,7 +296,7 @@ fn run() -> BumperResult<ExitCode> {
     if commits.is_empty() {
         log("No commits since last tag.", is_raw);
         if is_raw {
-            println!("{}", current_version);
+            emit_raw(&current_version, &config.preset, output);
         }
         return Ok(ExitCode::NoBump);
     }
@@ -280,7 +310,7 @@ fn run() -> BumperResult<ExitCode> {
     if analysis.bump == BumpType::None {
         log("No version bump required.", is_raw);
         if is_raw {
-            println!("{}", current_version);
+            emit_raw(&current_version, &config.preset, output);
         }
         return Ok(ExitCode::NoBump);
     }
@@ -303,8 +333,9 @@ fn run() -> BumperResult<ExitCode> {
 
     let new_version = current_version.bump(analysis.bump);
 
-    if is_raw {
-        println!("{}", new_version);
+    if config.raw {
+        // --raw or --dry-run — don't modify files
+        emit_raw(&new_version, &config.preset, output);
         return Ok(ExitCode::Ok);
     }
 
@@ -373,7 +404,7 @@ fn run() -> BumperResult<ExitCode> {
     Ok(ExitCode::Ok)
 }
 
-fn run_bump_type(args: &Args) -> BumperResult<()> {
+fn run_bump_type(args: &Args, output: Output) -> BumperResult<()> {
     let mut config = Config::load();
 
     if let Some(preset) = &args.preset {
@@ -403,10 +434,25 @@ fn run_bump_type(args: &Args) -> BumperResult<()> {
     git::set_git_config(&config.git_user_name, &config.git_user_email)?;
 
     let strategy = load_strategy(&config);
-    let _current_version = strategy.get_current_version()?;
+    let current_version = strategy.get_current_version()?;
 
     let last_tag = git::get_last_tag()?;
     let commits = git::get_commits_since_tag(last_tag.as_deref())?;
+
+    if output == Output::Json {
+        let analysis = analyse_commits(&commits, &config);
+        let json = serde_json::json!({
+            "bump_type": analysis.bump.as_str(),
+            "current_version": current_version.to_string(),
+            "triggering_commits": analysis.triggering_commits,
+            "unknown_commits": analysis.unknown_commits,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json).expect("failed to serialize bump-type JSON output")
+        );
+        return Ok(());
+    }
 
     if commits.is_empty() {
         println!("none");
@@ -422,7 +468,7 @@ fn run_bump_type(args: &Args) -> BumperResult<()> {
 fn main() {
     match run() {
         Ok(ExitCode::Ok) => process::exit(0),
-        Ok(ExitCode::NoBump) => process::exit(1),
+        Ok(ExitCode::NoBump) => process::exit(0),
         Err(e) => {
             eprintln!("Error: {}", e);
             process::exit(1);
