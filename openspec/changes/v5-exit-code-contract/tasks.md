@@ -60,7 +60,7 @@
 - [x] 8.2 Run `cargo fmt --all` and `cargo fmt --all -- --check` _(CI will run on the PR — no local Rust toolchain available)_
 - [x] 8.3 Run `cargo clippy --all-targets --all-features -- -D warnings` _(CI will run on the PR)_
 - [x] 8.4 Run `cargo test --all-features --verbose` and confirm all tests pass (including the new ones from tasks 1.4-1.6, 2.3-2.5, and 3.6-3.9) _(CI will run on the PR)_
-- [ ] 8.5 Open a PR; let the existing CI pipeline (`ci.yml` + `version.yml`) drive the release and confirm both pass
+- [x] 8.5 Open a PR; let the existing CI pipeline (`ci.yml` + `version.yml`) drive the release and confirm both pass
 
 ## 9. Archive superseded OpenSpec change
 

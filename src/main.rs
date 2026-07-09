@@ -247,26 +247,28 @@ fn run() -> BumperResult<ExitCode> {
 
     let last_tag_version = git::get_last_tag_version(&config)?;
 
-    // Sync package version if behind latest tag
-    if let Some(tag_ver) = last_tag_version {
-        if config.preset != "git" && current_version < tag_ver {
-            log(
-                &format!(
-                    "Package version {} is behind latest tag version {}, syncing...",
-                    current_version, tag_ver
-                ),
-                is_raw,
-            );
-            let updated_files = strategy.update_files(&tag_ver)?;
-            if !updated_files.is_empty() {
-                git::commit_changes(
-                    &format!("v{}", tag_ver),
-                    &updated_files,
-                    "chore: sync package version",
-                )?;
-                log(&format!("Synced package to version {}", tag_ver), is_raw);
+    // Sync package version if behind latest tag (skip in read-only modes)
+    if !config.raw {
+        if let Some(tag_ver) = last_tag_version {
+            if config.preset != "git" && current_version < tag_ver {
+                log(
+                    &format!(
+                        "Package version {} is behind latest tag version {}, syncing...",
+                        current_version, tag_ver
+                    ),
+                    is_raw,
+                );
+                let updated_files = strategy.update_files(&tag_ver)?;
+                if !updated_files.is_empty() {
+                    git::commit_changes(
+                        &format!("v{}", tag_ver),
+                        &updated_files,
+                        "chore: sync package version",
+                    )?;
+                    log(&format!("Synced package to version {}", tag_ver), is_raw);
+                }
+                current_version = tag_ver;
             }
-            current_version = tag_ver;
         }
     }
 
@@ -331,7 +333,8 @@ fn run() -> BumperResult<ExitCode> {
 
     let new_version = current_version.bump(analysis.bump);
 
-    if is_raw {
+    if config.raw {
+        // --raw or --dry-run — don't modify files
         emit_raw(&new_version, &config.preset, output);
         return Ok(ExitCode::Ok);
     }
@@ -446,8 +449,7 @@ fn run_bump_type(args: &Args, output: Output) -> BumperResult<()> {
         });
         println!(
             "{}",
-            serde_json::to_string_pretty(&json)
-                .expect("failed to serialize bump-type JSON output")
+            serde_json::to_string_pretty(&json).expect("failed to serialize bump-type JSON output")
         );
         return Ok(());
     }

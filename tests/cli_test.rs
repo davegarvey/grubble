@@ -317,7 +317,11 @@ fn test_error_exit_code() {
     // v5 contract: errors exit non-zero
     assert_ne!(output.status.code(), Some(0));
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("Error:"), "expected error on stderr, got: {}", stderr);
+    assert!(
+        stderr.contains("Error:"),
+        "expected error on stderr, got: {}",
+        stderr
+    );
 }
 
 #[test]
@@ -397,8 +401,9 @@ fn test_bump_type_json_output() {
 
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
-        .expect(&format!("stdout is not valid JSON: {}", stdout));
+    let stdout = stdout.trim();
+    let parsed: serde_json::Value = serde_json::from_str(stdout)
+        .unwrap_or_else(|e| panic!("stdout is not valid JSON '{}': {}", stdout, e));
 
     assert_eq!(parsed["bump_type"], "minor");
     assert!(parsed["current_version"].is_string());
@@ -425,8 +430,9 @@ fn test_raw_json_output() {
 
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value = serde_json::from_str(stdout.trim())
-        .expect(&format!("stdout is not valid JSON: {}", stdout));
+    let stdout = stdout.trim();
+    let parsed: serde_json::Value = serde_json::from_str(stdout)
+        .unwrap_or_else(|e| panic!("stdout is not valid JSON '{}': {}", stdout, e));
 
     assert_eq!(parsed["version"], "1.0.0");
     assert_eq!(parsed["preset"], "rust");

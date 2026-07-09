@@ -1,13 +1,8 @@
 use clap::ValueEnum;
 
-#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(ValueEnum, Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Output {
+    #[default]
     Text,
     Json,
-}
-
-impl Default for Output {
-    fn default() -> Self {
-        Output::Text
-    }
 }
