@@ -98,6 +98,8 @@ jobs:
 
     - name: Push to release branch and create PR
       shell: bash
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         CHANGED="${{ steps.check_version.outputs.changed }}"
         if [ "$CHANGED" != "true" ]; then
