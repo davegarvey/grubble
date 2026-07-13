@@ -64,7 +64,7 @@ jobs:
     - name: Get version before bump
       id: version_before
       run: |
-        VERSION=$(./target/release/grubble --raw --preset rust 2>/dev/null || echo "0.0.0")
+        VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
         echo "version=$VERSION" >> $GITHUB_OUTPUT
 
     - name: Bump version (commit + tag locally)
@@ -83,12 +83,8 @@ jobs:
     - name: Check version change
       id: check_version
       run: |
-        VERSION_AFTER=$(./target/release/grubble --raw --preset rust 2>/dev/null)
+        VERSION_AFTER=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
         VERSION_BEFORE="${{ steps.version_before.outputs.version }}"
-
-        if [ -z "$VERSION_AFTER" ]; then
-          VERSION_AFTER=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-        fi
 
         if [ "$VERSION_AFTER" != "$VERSION_BEFORE" ]; then
           echo "changed=true" >> $GITHUB_OUTPUT
