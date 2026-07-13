@@ -112,24 +112,9 @@ pub fn set_git_config(user_name: &str, user_email: &str) -> BumperResult<()> {
     Ok(())
 }
 
-pub fn push(branch: &str) -> BumperResult<()> {
-    if !branch.is_empty() {
-        ensure_local_branch(branch)?;
-    }
-    if branch.is_empty() {
-        run_git_command(&["push"])?;
-    } else {
-        run_git_command(&["push", "--set-upstream", "origin", branch])?;
-    }
+pub fn push() -> BumperResult<()> {
+    run_git_command(&["push"])?;
     run_git_command(&["push", "--tags"])?;
-    Ok(())
-}
-
-/// Create a local branch pointing to HEAD if it doesn't already exist.
-/// The `git branch` command fails with "already exists" if the branch is present,
-/// so any error is treated as a no-op (the branch already exists).
-fn ensure_local_branch(branch: &str) -> BumperResult<()> {
-    let _ = run_git_command(&["branch", branch]);
     Ok(())
 }
 
@@ -175,15 +160,8 @@ pub fn update_movable_tags(
 /// # Warning
 /// Force-pushing tags can affect users who have those tags checked out locally.
 /// Only use this when maintaining moving major/minor version tags.
-pub fn push_with_force_tags(branch: &str) -> BumperResult<()> {
-    if !branch.is_empty() {
-        ensure_local_branch(branch)?;
-    }
-    if branch.is_empty() {
-        run_git_command(&["push"])?;
-    } else {
-        run_git_command(&["push", "--set-upstream", "origin", branch])?;
-    }
+pub fn push_with_force_tags() -> BumperResult<()> {
+    run_git_command(&["push"])?;
     // Force push tags to update major/minor tags on remote
     run_git_command(&["push", "--tags", "--force"])?;
     Ok(())

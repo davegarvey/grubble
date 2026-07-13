@@ -109,7 +109,6 @@ grubble --dry-run            # preview the bump without applying it
 grubble --bump-type          # print major | minor | patch | none
 grubble --output json        # emit machine-readable output (with --raw or --bump-type)
 grubble --quiet              # suppress the commit list
-grubble --git-branch release/v0.35.0  # push the bump to a release branch (works on protected branches)
 grubble --help               # full flag reference
 ```
 
@@ -144,7 +143,6 @@ Grubble reads `.versionrc.json` from the project root. Flags and file values are
 | `updateMajorTag` | `--update-major-tag` | `false` | Maintain a floating `v4` tag pointing to the latest `v4.x.x`. |
 | `updateMinorTag` | `--update-minor-tag` | `false` | Maintain a floating `v4.1` tag pointing to the latest `v4.1.x`. |
 | `gitUserName` | `--git-user-name` | `github-actions[bot]` | Identity used for the bump commit when no local git user is configured. |
-| — | `--git-branch` | `""` | Push the bump to this branch instead of HEAD. See [Releasing on Protected Branches](#releasing-on-protected-branches). |
 | `gitUserEmail` | `--git-user-email` | `41898282+github-actions[bot]@users.noreply.github.com` | Email used for the bump commit when no local git user is configured. |
 | `types` | — | see [Commit Types](#commit-types) | Per-type bump behavior. Valid values: `major`, `minor`, `patch`, `none`. |
 
@@ -263,75 +261,6 @@ CI checklist:
 - Use `fetch-depth: 0` on `actions/checkout` so grubble can see the full history.
 - Pin the major version (`@v4`) unless you want the release frozen.
 - Use the GitHub Action unless you need custom logic between the lint and the bump.
-
-## Releasing on Protected Branches
-
-If your `main` branch is protected (required PRs, required status checks), the default `push: true` will fail with `GH006: Protected branch update failed` because `GITHUB_TOKEN` cannot bypass branch protection.
-
-The recommended pattern is to push the bump to a release branch and open a PR:
-
-```yaml
-name: Release
-on:
-  push:
-    branches: [main]
-
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - id: bump
-        uses: davegarvey/grubble@v5
-        with:
-          push: true
-          tag: true
-          create-pr: true
-          auto-merge: true
-```
-
-How it works:
-
-- The action auto-generates a branch name `release/v<version>` from the bumped version and pushes the commit there
-- `create-pr: true` opens a PR from the release branch to the default branch
-- `auto-merge: true` enables squash auto-merge, so the PR merges when branch protection requirements (status checks, reviews) pass
-
-You can also set an explicit branch name (e.g. `branch: release` for a single always-current release branch) if you prefer not to auto-generate.
-
-### Input validation
-
-| Condition | Result |
-|---|---|
-| `create-pr: true` without `push: true` | Error |
-| `auto-merge: true` without `create-pr: true` | Error |
-| `create-pr: true` without `branch` | Branch auto-generated as `release/v<version>` |
-
-### Required permissions
-
-| Mode | `contents` | `pull-requests` |
-| --- | --- | --- |
-| Default (`push: true` only) | `write` | — |
-| PR flow (`create-pr: true`) | `write` | `write` |
-
-### Bypass token (advanced)
-
-If you cannot use the PR flow and must push directly to a protected branch, supply a custom token:
-
-```yaml
-- uses: davegarvey/grubble@v5
-  with:
-    push: true
-    token: ${{ secrets.RELEASE_PAT }}
-```
-
-The Action masks the token in logs and rewrites the remote URL with it before grubble runs. The token must have push access and bypass privileges for the protected branch — typically a GitHub App installation token or a fine-grained PAT with `contents: write`.
-
-Prefer the PR flow whenever possible. Bypassing branch protection skips required reviews and status checks, which undermines the protections you set up.
 
 ## CI/CD Patterns
 
@@ -456,10 +385,6 @@ Empty or invalid `.versionrc.json` falls back to defaults with a warning. Run gr
 
 - Check that `--package-files` points to files relative to the repo root.
 - For multi-package repos, pass each file: `--package-files "Cargo.toml,client/Cargo.toml"`.
-
-**Push fails on protected branches (`GH006`)**
-
-`GITHUB_TOKEN` cannot bypass branch protection. Use the [PR flow](#releasing-on-protected-branches) (`branch` + `create-pr`), or supply a [bypass token](#bypass-token-advanced) if you must push directly.
 
 **"Invalid format" in `$GITHUB_OUTPUT`**
 

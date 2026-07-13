@@ -41,47 +41,57 @@ jobs:
       new_version: ${{ steps.check_version.outputs.version }}
       tag_name: ${{ steps.check_version.outputs.tag_name }}
     permissions:
-      contents: write        # Required for pushing commits/tags
-      pull-requests: write   # Required for PR creation
+      contents: write      # Required for pushing commits/tags
+      pull-requests: read  # Required for PR info
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    - name: Build grubble (compilation check)
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: stable
+        cache: true
+
+    - name: Build grubble
       run: cargo build --release
 
-    - name: Bump version and create release PR
-      id: bump
+    - name: Get version before bump
+      id: version_before
+      run: |
+        VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Bump version
       if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_version_bump != 'true'
-      uses: ./
-      with:
-        push: true
-        tag: true
-        preset: rust
-        create-pr: true
-        auto-merge: true
-        update-major-tag: true
-        release-notes: true
-        changelog: true
+      run: |
+        ./target/release/grubble \
+          --git-user-name "github-actions[bot]" \
+          --git-user-email "41898282+github-actions[bot]@users.noreply.github.com" \
+          --preset rust \
+          --push \
+          --tag \
+          --release-notes \
+          --changelog \
+          --update-major-tag
 
     - name: Check version change
       id: check_version
       run: |
-        VERSION="${{ steps.bump.outputs.version }}"
-        if [ -z "$VERSION" ]; then
-          VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-        fi
-        BUMP_TYPE="${{ steps.bump.outputs.bump_type }}"
+        VERSION_AFTER=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+        VERSION_BEFORE="${{ steps.version_before.outputs.version }}"
         
-        if [ -n "$BUMP_TYPE" ] && [ "$BUMP_TYPE" != "none" ]; then
+        if [ "$VERSION_AFTER" != "$VERSION_BEFORE" ]; then
           echo "changed=true" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag_name=v$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
+          echo "tag_name=v$VERSION_AFTER" >> $GITHUB_OUTPUT
+          echo "Version changed: $VERSION_BEFORE -> $VERSION_AFTER"
         else
           echo "changed=false" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag_name=v$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
+          echo "tag_name=v$VERSION_AFTER" >> $GITHUB_OUTPUT
+          echo "Version unchanged: $VERSION_AFTER"
         fi
 
   test:
