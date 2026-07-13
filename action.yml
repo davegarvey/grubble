@@ -71,6 +71,22 @@ inputs:
     description: 'Output only the bump type and exit (major, minor, patch, or none)'
     required: false
     default: 'false'
+  branch:
+    description: 'Push the bump to this branch instead of HEAD (e.g., release/v0.35.0). When set, uses `git push --set-upstream origin <branch>`. The branch is created locally if it does not exist.'
+    required: false
+    default: ''
+  create-pr:
+    description: 'After pushing, automatically open a pull request from the branch to the default branch. Requires `push: true`. When `branch` is not set, it is auto-generated as `release/v<version>`.'
+    required: false
+    default: 'false'
+  auto-merge:
+    description: 'Enable auto-merge with squash on the created PR. Requires `create-pr` to be set. The PR will merge when branch protection requirements (status checks, reviews) pass.'
+    required: false
+    default: 'false'
+  token:
+    description: 'Optional: a GitHub token (PAT or GitHub App installation token) to use for git push authentication. Only needed if you must bypass branch protection. When set, the remote URL is rewritten with the token before grubble runs. Prefer the `branch` + `create-pr` flow instead.'
+    required: false
+    default: ''
 
 outputs:
   version:
@@ -82,6 +98,9 @@ outputs:
   bump-type:
     description: 'The type of version bump (major, minor, patch, none)'
     value: ${{ steps.bump.outputs.bump_type }}
+  branch:
+    description: 'The branch that was pushed to (auto-generated or user-specified)'
+    value: ${{ steps.bump.outputs.branch }}
 
 runs:
   using: 'composite'
@@ -208,6 +227,27 @@ runs:
         Write-Output "✓ Binary ready"
         Write-Output "::endgroup::"
 
+    - name: Validate inputs
+      if: inputs.create-pr == 'true' || inputs.auto-merge == 'true'
+      shell: bash
+      run: |
+        if [ "${{ inputs.create-pr }}" = "true" ] && [ "${{ inputs.push }}" != "true" ]; then
+          echo "::error::create-pr requires push to be set."
+          exit 1
+        fi
+        if [ "${{ inputs.auto-merge }}" = "true" ] && [ "${{ inputs.create-pr }}" != "true" ]; then
+          echo "::error::auto-merge requires create-pr to be set."
+          exit 1
+        fi
+
+    - name: Set up push credentials
+      if: inputs.token != ''
+      shell: bash
+      run: |
+        echo "::add-mask::${{ inputs.token }}"
+        git remote set-url origin "https://x-access-token:${{ inputs.token }}@github.com/${{ github.repository }}"
+        echo "✓ Remote URL updated with custom token"
+
     - name: Get current version
       id: current
       shell: bash
@@ -258,8 +298,16 @@ runs:
           exit 0
         fi
 
+        # When create-pr is set without an explicit branch, we auto-generate
+        # the branch name from the new version. The binary commits locally
+        # (no --push), then the action creates the branch and pushes it.
+        PUSHING_TO_BRANCH=false
         if [ "${{ inputs.push }}" = "true" ]; then
-          ARGS="$ARGS --push"
+          if [ "${{ inputs.create-pr }}" = "true" ] && [ -z "${{ inputs.branch }}" ]; then
+            PUSHING_TO_BRANCH=true
+          else
+            ARGS="$ARGS --push"
+          fi
         fi
 
         if [ "${{ inputs.tag }}" = "true" ]; then
@@ -312,6 +360,10 @@ runs:
 
         if [ "${{ inputs.changelog }}" = "true" ]; then
           ARGS="$ARGS --changelog"
+        fi
+
+        if [ -n "${{ inputs.branch }}" ]; then
+          ARGS="$ARGS --git-branch ${{ inputs.branch }}"
         fi
 
         # Run grubble. v5 contract: exit 0 = success (bumped or clean no-op),
@@ -375,3 +427,48 @@ runs:
         fi
 
         echo "previous_version=$PREV" >> $GITHUB_OUTPUT
+
+    - name: Create release PR
+      id: pr
+      if: inputs.create-pr == 'true' && steps.bump.outputs.bump_type != 'none'
+      shell: bash
+      run: |
+        VERSION="${{ steps.bump.outputs.version }}"
+        PREV="${{ steps.bump.outputs.previous_version }}"
+        BUMP_TYPE="${{ steps.bump.outputs.bump_type }}"
+        BRANCH="${{ steps.bump.outputs.branch }}"
+        DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+
+        BODY="Automated release PR created by grubble.
+
+        - Version: v${VERSION}
+        - Previous: v${PREV}
+        - Bump type: ${BUMP_TYPE}"
+
+        PR_URL=$(gh pr create \
+          --base "${DEFAULT_BRANCH}" \
+          --head "${BRANCH}" \
+          --title "Release v${VERSION}" \
+          --body "${BODY}")
+        echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+    - name: Enable auto-merge
+      if: inputs.auto-merge == 'true' && inputs.create-pr == 'true' && steps.bump.outputs.bump_type != 'none'
+      shell: bash
+      run: |
+        if [ -n "${{ steps.pr.outputs.pr_url }}" ]; then
+          gh pr merge "${{ steps.pr.outputs.pr_url }}" --auto --squash
+        fi
+
+        # Auto-generated branch: create branch from the local commit and push it.
+        if [ "$PUSHING_TO_BRANCH" = "true" ] && [ "$NEW_VERSION" != "$PREV" ]; then
+          BRANCH="release/v${NEW_VERSION}"
+          git checkout -b "${BRANCH}"
+          git push --set-upstream origin "${BRANCH}" 2>&1
+          git push --tags --force 2>&1
+          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
+        fi
+
+        if [ -n "${{ inputs.branch }}" ]; then
+          echo "branch=${{ inputs.branch }}" >> $GITHUB_OUTPUT
+        fi

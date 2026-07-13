@@ -48,36 +48,57 @@ jobs:
       with:
         fetch-depth: 0
 
+    # Build from source instead of using the published action (davegarvey/grubble@v5).
+    # This lets us dogfood new binary features (like --git-branch) immediately on merge
+    # rather than waiting for a release to update the @v5 tag. The trade-off is we
+    # duplicate the action's input-to-arg mapping here.
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: stable
+        cache: true
+
+    - name: Build grubble
+      run: cargo build --release
+
+    - name: Get version before bump
+      id: version_before
+      run: |
+        VERSION=$(./target/release/grubble --raw --preset rust 2>/dev/null || echo "0.0.0")
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
     - name: Bump version
       id: bump
       if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_version_bump != 'true'
-      uses: davegarvey/grubble@v5
-      with:
-        push: true
-        tag: true
-        preset: rust
-        update-major-tag: true
-        release-notes: true
-        changelog: true
+      run: |
+        ./target/release/grubble \
+          --git-user-name "github-actions[bot]" \
+          --git-user-email "41898282+github-actions[bot]@users.noreply.github.com" \
+          --preset rust \
+          --push \
+          --tag \
+          --release-notes \
+          --changelog \
+          --update-major-tag
 
     - name: Check version change
       id: check_version
       run: |
-        VERSION="${{ steps.bump.outputs.version }}"
-        BUMP_TYPE="${{ steps.bump.outputs['bump-type'] }}"
-        
-        if [ -z "$VERSION" ]; then
-          VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+        VERSION_AFTER=$(./target/release/grubble --raw --preset rust 2>/dev/null)
+        VERSION_BEFORE="${{ steps.version_before.outputs.version }}"
+
+        if [ -z "$VERSION_AFTER" ]; then
+          VERSION_AFTER=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
         fi
-        
-        if [ -n "$BUMP_TYPE" ] && [ "$BUMP_TYPE" != "none" ]; then
+
+        if [ "$VERSION_AFTER" != "$VERSION_BEFORE" ]; then
           echo "changed=true" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag_name=v$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
+          echo "tag_name=v$VERSION_AFTER" >> $GITHUB_OUTPUT
         else
           echo "changed=false" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag_name=v$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
+          echo "tag_name=v$VERSION_AFTER" >> $GITHUB_OUTPUT
         fi
 
   test:
