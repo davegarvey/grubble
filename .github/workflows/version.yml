@@ -37,21 +37,20 @@ jobs:
     needs: [wait-for-ci]
     if: always() && (needs.wait-for-ci.result == 'success' || github.event_name == 'workflow_dispatch')
     outputs:
-      version_changed: ${{ steps.check_version.outputs.changed }}
-      new_version: ${{ steps.check_version.outputs.version }}
-      tag_name: ${{ steps.check_version.outputs.tag_name }}
+      version_changed: ${{ steps.bump.outputs.changed }}
+      new_version: ${{ steps.bump.outputs.version }}
+      tag_name: ${{ steps.bump.outputs.tag_name }}
     permissions:
-      contents: write        # Required for pushing commits/tags
-      pull-requests: write   # Required for PR creation
+      contents: write        # Push commits and tags
+      pull-requests: write   # Create the release PR
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    # Build from source instead of using the published action (davegarvey/grubble@v5).
-    # This lets us dogfood new binary features (like --git-branch) immediately on merge
-    # rather than waiting for a release to update the @v5 tag. The trade-off is we
-    # duplicate the action's input-to-arg mapping here.
+    # We build from source (rather than using davegarvey/grubble@v5) so we can
+    # dogfood new binary features immediately on merge, without waiting for a
+    # release to update the @v5 tag.
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
@@ -61,16 +60,19 @@ jobs:
     - name: Build grubble
       run: cargo build --release
 
-    - name: Get version before bump
-      id: version_before
-      run: |
-        VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
+    # Remove any v* tags left from previous failed runs. Each run fetches with
+    # fetch-depth: 0, so tags from prior runs on release/* branches get pulled
+    # in but point to commits not on main. The binary's `git tag v<version>`
+    # would fail with "tag already exists" without this cleanup.
+    - name: Clean up stale tags
+      run: git tag -l 'v*' | xargs -r git tag -d
 
-    - name: Bump version (commit + tag locally)
+    - name: Bump version
       id: bump
       if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_version_bump != 'true'
       run: |
+        VERSION_BEFORE=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+
         ./target/release/grubble \
           --git-user-name "github-actions[bot]" \
           --git-user-email "41898282+github-actions[bot]@users.noreply.github.com" \
@@ -80,38 +82,31 @@ jobs:
           --changelog \
           --update-major-tag
 
-    - name: Check version change
-      id: check_version
-      run: |
         VERSION_AFTER=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-        VERSION_BEFORE="${{ steps.version_before.outputs.version }}"
 
         if [ "$VERSION_AFTER" != "$VERSION_BEFORE" ]; then
           echo "changed=true" >> $GITHUB_OUTPUT
-          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
-          echo "tag_name=v$VERSION_AFTER" >> $GITHUB_OUTPUT
         else
           echo "changed=false" >> $GITHUB_OUTPUT
-          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
-          echo "tag_name=v$VERSION_AFTER" >> $GITHUB_OUTPUT
         fi
+        echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
+        echo "tag_name=v$VERSION_AFTER" >> $GITHUB_OUTPUT
 
     - name: Push to release branch and create PR
-      shell: bash
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        CHANGED="${{ steps.check_version.outputs.changed }}"
-        if [ "$CHANGED" != "true" ]; then
+        if [ "${{ steps.bump.outputs.changed }}" != "true" ]; then
           echo "No version change — skipping push and PR creation."
           exit 0
         fi
 
-        VERSION="${{ steps.check_version.outputs.version }}"
+        VERSION="${{ steps.bump.outputs.version }}"
         BRANCH="release/v${VERSION}"
 
-        git checkout -b "${BRANCH}"
-        git push --set-upstream origin "${BRANCH}"
+        # Force-create the branch in case a previous run left one behind on the remote.
+        git checkout -B "${BRANCH}"
+        git push --set-upstream origin "${BRANCH}" --force
         git push --tags --force
 
         PR_URL=$(gh pr create \
@@ -119,7 +114,6 @@ jobs:
           --head "${BRANCH}" \
           --title "Release v${VERSION}" \
           --body "Automated release PR created by grubble.")
-        echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
         gh pr merge "${PR_URL}" --auto --squash
 
   test:
