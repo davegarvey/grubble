@@ -1,7 +1,6 @@
 {
     "preset": "rust",
     "changelog": true,
-    "push": true,
     "tag": true,
     "releaseNotes": true,
     "updateMajorTag": true,
