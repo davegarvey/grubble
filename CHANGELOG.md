@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.0] - 2026-07-13
+
+### Added
+
+- protected branch push support (--git-branch, create-pr, auto-merge, token) (#61)
+
+### Changed
+
+- trigger version workflow (#69)
+- consolidate bump steps and add stale tag cleanup (#67)
+- use published action (davegarvey/grubble@v5) instead of manual build (#60)
+
+### Fixed
+
+- only delete unreachable tags and fetch tags explicitly (#68)
+- set GH_TOKEN for gh CLI in push/PR step (#66)
+- grep Cargo.toml directly for version instead of --raw (#65)
+- move step condition into shell script (#64)
+- remove push from .versionrc.json to avoid unwanted pushes (#63)
+- push to release branch instead of protected main (#62)
+
 ## [5.1.0] - 2026-07-13
 
 ### Added
