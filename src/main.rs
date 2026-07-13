@@ -49,6 +49,12 @@ struct Args {
     #[arg(short, long)]
     push: bool,
 
+    /// Push to this branch instead of HEAD (e.g., release/v0.35.0).
+    /// When set, uses `git push --set-upstream origin <branch>`.
+    /// The branch is created locally if it doesn't exist.
+    #[arg(long, default_value = "")]
+    git_branch: String,
+
     /// Suppress commit list output
     #[arg(short, long)]
     quiet: bool,
@@ -402,9 +408,9 @@ fn run() -> BumperResult<ExitCode> {
 
     if config.push {
         if config.update_major_tag || config.update_minor_tag {
-            git::push_with_force_tags()?;
+            git::push_with_force_tags(&args.git_branch)?;
         } else {
-            git::push()?;
+            git::push(&args.git_branch)?;
         }
         let mut actions = vec!["Pushed changes"];
         if config.tag {

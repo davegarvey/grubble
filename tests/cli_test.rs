@@ -574,3 +574,185 @@ fn test_file_ahead_of_tag_succeeds_in_raw_mode() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.trim(), "5.0.0");
 }
+
+/// Set up a test repo that has a local bare "remote" added as origin.
+/// Returns (work_dir, remote_dir, grubble_command) where the grubble command
+/// is pre-configured to run in work_dir.
+fn setup_test_repo_with_remote() -> (TempDir, TempDir, Command) {
+    let remote_dir = TempDir::new().unwrap();
+    let work_dir = TempDir::new().unwrap();
+
+    Command::new("git")
+        .args(["init", "--bare", "--initial-branch=main"])
+        .current_dir(&remote_dir)
+        .output()
+        .expect("Failed to init bare remote");
+
+    Command::new("git")
+        .args(["init", "--initial-branch=main"])
+        .current_dir(&work_dir)
+        .output()
+        .expect("Failed to init working repo");
+
+    Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(&work_dir)
+        .output()
+        .expect("Failed to set git email");
+
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(&work_dir)
+        .output()
+        .expect("Failed to set git name");
+
+    let remote_path = remote_dir.path().to_str().unwrap();
+    Command::new("git")
+        .args(["remote", "add", "origin", remote_path])
+        .current_dir(&work_dir)
+        .output()
+        .expect("Failed to add remote");
+
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "chore: initial commit"])
+        .current_dir(&work_dir)
+        .output()
+        .expect("Failed to create initial commit");
+
+    Command::new("git")
+        .args(["tag", "v1.0.0"])
+        .current_dir(&work_dir)
+        .output()
+        .expect("Failed to create tag");
+
+    let mut cmd = Command::new(get_grubble_bin());
+    cmd.current_dir(&work_dir);
+
+    (work_dir, remote_dir, cmd)
+}
+
+#[test]
+fn test_push_to_branch() {
+    let (work_dir, remote_dir, mut cmd) = setup_test_repo_with_remote();
+
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "feat: new feature"])
+        .current_dir(&work_dir)
+        .output()
+        .expect("Failed to create feat commit");
+
+    cmd.arg("--push");
+    cmd.arg("--tag");
+    cmd.arg("--git-branch");
+    cmd.arg("release/v1.1.0");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "grubble failed: {}", stderr);
+
+    let ls_remote_output = Command::new("git")
+        .args([
+            "ls-remote",
+            "--heads",
+            remote_dir.path().to_str().unwrap(),
+            "release/v1.1.0",
+        ])
+        .output()
+        .expect("Failed to ls-remote");
+
+    let ls_remote = String::from_utf8_lossy(&ls_remote_output.stdout);
+    assert!(
+        ls_remote.contains("refs/heads/release/v1.1.0"),
+        "expected release/v1.1.0 on remote, got: {}",
+        ls_remote
+    );
+
+    let ls_tags_output = Command::new("git")
+        .args([
+            "ls-remote",
+            "--tags",
+            remote_dir.path().to_str().unwrap(),
+            "v1.1.0",
+        ])
+        .output()
+        .expect("Failed to ls-remote tags");
+
+    let ls_tags = String::from_utf8_lossy(&ls_tags_output.stdout);
+    assert!(
+        ls_tags.contains("refs/tags/v1.1.0"),
+        "expected v1.1.0 tag on remote, got: {}",
+        ls_tags
+    );
+
+    let ls_main_output = Command::new("git")
+        .args([
+            "ls-remote",
+            "--heads",
+            remote_dir.path().to_str().unwrap(),
+            "main",
+        ])
+        .output()
+        .expect("Failed to ls-remote main");
+
+    let ls_main = String::from_utf8_lossy(&ls_main_output.stdout);
+    assert!(
+        !ls_main.contains("refs/heads/main"),
+        "main should not have been pushed to, got: {}",
+        ls_main
+    );
+}
+
+#[test]
+fn test_push_to_branch_with_force_tags() {
+    let (work_dir, remote_dir, mut cmd) = setup_test_repo_with_remote();
+
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "feat: new feature"])
+        .current_dir(&work_dir)
+        .output()
+        .expect("Failed to create feat commit");
+
+    cmd.arg("--push");
+    cmd.arg("--tag");
+    cmd.arg("--update-minor-tag");
+    cmd.arg("--git-branch");
+    cmd.arg("release/v1.1");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "grubble failed: {}", stderr);
+
+    let ls_remote_output = Command::new("git")
+        .args([
+            "ls-remote",
+            "--heads",
+            remote_dir.path().to_str().unwrap(),
+            "release/v1.1",
+        ])
+        .output()
+        .expect("Failed to ls-remote");
+
+    let ls_remote = String::from_utf8_lossy(&ls_remote_output.stdout);
+    assert!(
+        ls_remote.contains("refs/heads/release/v1.1"),
+        "expected release/v1.1 on remote, got: {}",
+        ls_remote
+    );
+
+    let ls_tags_output = Command::new("git")
+        .args([
+            "ls-remote",
+            "--tags",
+            remote_dir.path().to_str().unwrap(),
+            "v1.1",
+        ])
+        .output()
+        .expect("Failed to ls-remote tags");
+
+    let ls_tags = String::from_utf8_lossy(&ls_tags_output.stdout);
+    assert!(
+        ls_tags.contains("refs/tags/v1.1"),
+        "expected v1.1 minor tag on remote, got: {}",
+        ls_tags
+    );
+}
