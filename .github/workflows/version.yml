@@ -47,6 +47,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        fetch-tags: true
 
     # We build from source (rather than using davegarvey/grubble@v5) so we can
     # dogfood new binary features immediately on merge, without waiting for a
@@ -60,12 +61,21 @@ jobs:
     - name: Build grubble
       run: cargo build --release
 
-    # Remove any v* tags left from previous failed runs. Each run fetches with
-    # fetch-depth: 0, so tags from prior runs on release/* branches get pulled
-    # in but point to commits not on main. The binary's `git tag v<version>`
-    # would fail with "tag already exists" without this cleanup.
+    # Remove v* tags that are not reachable from main. These are leftovers
+    # from previous failed runs that pushed to release/* branches but never
+    # merged. Without this, the binary's `git tag v<version>` would fail with
+    # "tag already exists". Only unreachable tags are removed — legitimate
+    # tags (e.g. v5.1.0 on the current branch's history) are kept so the
+    # binary can find the last tag and only analyze new commits.
     - name: Clean up stale tags
-      run: git tag -l 'v*' | xargs -r git tag -d
+      run: |
+        git fetch origin --tags
+        git tag -l 'v*' | while read -r tag; do
+          if ! git merge-base --is-ancestor "$tag" HEAD 2>/dev/null; then
+            echo "Removing unreachable tag: $tag"
+            git tag -d "$tag"
+          fi
+        done
 
     - name: Bump version
       id: bump
@@ -94,7 +104,7 @@ jobs:
 
     - name: Push to release branch and create PR
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         if [ "${{ steps.bump.outputs.changed }}" != "true" ]; then
           echo "No version change — skipping push and PR creation."
