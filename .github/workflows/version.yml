@@ -48,50 +48,36 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Setup Rust
-      uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        toolchain: stable
-        cache: true
-
-    - name: Build grubble
-      run: cargo build --release
-
-    - name: Get version before bump
-      id: version_before
-      run: |
-        VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-
     - name: Bump version
+      id: bump
       if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_version_bump != 'true'
-      run: |
-        ./target/release/grubble \
-          --git-user-name "github-actions[bot]" \
-          --git-user-email "41898282+github-actions[bot]@users.noreply.github.com" \
-          --preset rust \
-          --push \
-          --tag \
-          --release-notes \
-          --changelog \
-          --update-major-tag
+      uses: davegarvey/grubble@v5
+      with:
+        push: true
+        tag: true
+        preset: rust
+        update-major-tag: true
+        release-notes: true
+        changelog: true
 
     - name: Check version change
       id: check_version
       run: |
-        VERSION_AFTER=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-        VERSION_BEFORE="${{ steps.version_before.outputs.version }}"
+        VERSION="${{ steps.bump.outputs.version }}"
+        BUMP_TYPE="${{ steps.bump.outputs['bump-type'] }}"
         
-        if [ "$VERSION_AFTER" != "$VERSION_BEFORE" ]; then
+        if [ -z "$VERSION" ]; then
+          VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+        fi
+        
+        if [ -n "$BUMP_TYPE" ] && [ "$BUMP_TYPE" != "none" ]; then
           echo "changed=true" >> $GITHUB_OUTPUT
-          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
-          echo "tag_name=v$VERSION_AFTER" >> $GITHUB_OUTPUT
-          echo "Version changed: $VERSION_BEFORE -> $VERSION_AFTER"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag_name=v$VERSION" >> $GITHUB_OUTPUT
         else
           echo "changed=false" >> $GITHUB_OUTPUT
-          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
-          echo "tag_name=v$VERSION_AFTER" >> $GITHUB_OUTPUT
-          echo "Version unchanged: $VERSION_AFTER"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag_name=v$VERSION" >> $GITHUB_OUTPUT
         fi
 
   test:
