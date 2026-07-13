@@ -101,9 +101,14 @@ jobs:
         fi
 
     - name: Push to release branch and create PR
-      if: steps.check_version.outputs.changed == 'true'
       shell: bash
       run: |
+        CHANGED="${{ steps.check_version.outputs.changed }}"
+        if [ "$CHANGED" != "true" ]; then
+          echo "No version change — skipping push and PR creation."
+          exit 0
+        fi
+
         VERSION="${{ steps.check_version.outputs.version }}"
         BRANCH="release/v${VERSION}"
 
