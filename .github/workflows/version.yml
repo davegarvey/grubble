@@ -180,11 +180,15 @@ jobs:
           --git-branch "${BRANCH}" \
           --preset rust \
           --changelog \
-          --push
+          --push \
+          --force-push
 
         # Open or update the PR. We don't enable auto-merge — a human
         # reviews and merges the release PR. This is the canonical
         # release-please pattern.
+        # Note: --force-push ensures the release branch is always reset
+        # to the current main HEAD (plus the bump commit), even if the
+        # remote branch has a different parent commit from a previous run.
         if gh pr view "${BRANCH}" >/dev/null 2>&1; then
           echo "PR already exists for ${BRANCH}; branch was force-pushed."
         else

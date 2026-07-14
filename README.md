@@ -110,6 +110,7 @@ grubble --bump-type          # print major | minor | patch | none
 grubble --output json        # emit machine-readable output (with --raw or --bump-type)
 grubble --quiet              # suppress the commit list
 grubble --git-branch release/v0.35.0  # push the bump to a release branch (works on protected branches)
+grubble --git-branch release/v0.35.0 --force-push  # same, with --force-with-lease (for workflow-owned branches)
 grubble --release-from-pr 79          # resolve a merged release PR to a tag spec (for canonical release-please workflows)
 grubble --help               # full flag reference
 ```
@@ -342,6 +343,8 @@ Patterns and pitfalls, distilled from the release-please / semantic-release play
 - **Tags are created on the main merge commit, not on the release branch tip.** This is the canonical pattern and it eliminates tag-orphaning on squash merges. Pre-tagging the release branch (the older grubble default) is a known footgun — the tag is at risk of being detached from `main` after a squash merge.
 - **Floating major tags (`v5`) and minor tags (`v5.2`) are force-moved on every release.** Consumers who pin to `owner/repo@v5` automatically get the latest v5.x.x. Only enable `--update-major-tag` if you follow semver strictly — a breaking change bumps the major and silently moves the tag for everyone.
 - **Use the `release-from-pr` Action input in your post-merge step.** It is the read-only resolution step that turns a merged release PR into a tag spec (`version`, `tag_name`, `major_tag_name`, `merge_commit_sha`, `title`, `body`) without writing any state. Your workflow then does the `gh api` calls to create the tag and GitHub Release. This is cleaner than shelling out to `grubble --release-from-pr` in a `run:` step, because the Action handles binary download in each invocation.
+
+- **Force-push the release branch with `--force-with-lease`, not plain `--force`.** The release branch is owned by the workflow — it is re-created from `main` on every push, so it must be force-pushable. Use `--force-with-lease` (via `--force-push`) instead of plain `--force` because it fails if the remote has been updated since the local checkout (e.g., a human pushed a fix to the branch). This matches `release-please`'s own use of `--force-with-lease`. The `--force-push` flag requires `--git-branch` and is rejected if you try to use it on the current branch.
 
 ### CI gating
 
