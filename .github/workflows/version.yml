@@ -89,7 +89,7 @@ jobs:
     #   1. Compute the next version (dry-run, no side effects).
     #   2. If the version would change, open or update a release PR on a
     #      release/v<version> branch. The PR contains the version bump
-    #      commit + CHANGELOG entry. NO auto-merge — a human reviews and
+    #      commit + CHANGELOG entry. Auto-merge is enabled below.
     #      merges the PR.
     #   3. On the next push to main, detect the most recent merged release
     #      PR. If found, create the v<version> tag and GitHub Release on
