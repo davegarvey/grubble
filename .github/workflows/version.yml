@@ -61,6 +61,48 @@ jobs:
     - name: Build grubble
       run: cargo build --release
 
+    # When a release PR is squash-merged, the tags created by grubble during
+    # the "Bump version" step end up on the release branch commit, not on
+    # the squash merge commit. This step detects and recreates orphaned tags
+    # before the stale-tag cleanup below removes them permanently.
+    - name: Recreate orphaned release tags
+      run: |
+        git fetch origin --tags
+        VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+        if [ -z "$VERSION" ]; then
+          echo "No version found in Cargo.toml — skipping"
+          exit 0
+        fi
+
+        TAG="v${VERSION}"
+        if ! git rev-parse --verify "refs/tags/${TAG}" >/dev/null 2>&1; then
+          echo "Recreating orphaned tag ${TAG} at HEAD"
+          git tag "${TAG}" HEAD
+          git push origin "${TAG}" --force
+        else
+          echo "Tag ${TAG} already exists at $(git rev-parse ${TAG})"
+        fi
+
+        MAJOR=$(echo "$VERSION" | cut -d. -f1)
+        MAJOR_TAG="v${MAJOR}"
+        if git rev-parse --verify "refs/tags/${MAJOR_TAG}" >/dev/null 2>&1; then
+          MAJOR_TAG_SHA=$(git rev-parse "${MAJOR_TAG}")
+          HEAD_SHA=$(git rev-parse HEAD)
+          if [ "$MAJOR_TAG_SHA" != "$HEAD_SHA" ] && git merge-base --is-ancestor "${MAJOR_TAG}" HEAD >/dev/null 2>&1; then
+            echo "Updating floating tag ${MAJOR_TAG} from ${MAJOR_TAG_SHA} to ${HEAD_SHA}"
+            git tag -d "${MAJOR_TAG}"
+            git tag "${MAJOR_TAG}" HEAD
+            git push origin "${MAJOR_TAG}" --force
+          elif ! git merge-base --is-ancestor "${MAJOR_TAG}" HEAD >/dev/null 2>&1; then
+            echo "Recreating orphaned floating tag ${MAJOR_TAG} at HEAD"
+            git tag -d "${MAJOR_TAG}" 2>/dev/null || true
+            git tag "${MAJOR_TAG}" HEAD
+            git push origin "${MAJOR_TAG}" --force
+          else
+            echo "Floating tag ${MAJOR_TAG} already points to HEAD"
+          fi
+        fi
+
     # Remove v* tags that are not reachable from main. These are leftovers
     # from previous failed runs that pushed to release/* branches but never
     # merged. Without this, the binary's `git tag v<version>` would fail with
@@ -69,7 +111,6 @@ jobs:
     # binary can find the last tag and only analyze new commits.
     - name: Clean up stale tags
       run: |
-        git fetch origin --tags
         git tag -l 'v*' | while read -r tag; do
           if ! git merge-base --is-ancestor "$tag" HEAD 2>/dev/null; then
             echo "Removing unreachable tag: $tag"
