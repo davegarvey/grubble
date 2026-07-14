@@ -211,7 +211,7 @@ dependencies = [
 
 [[package]]
 name = "grubble"
-version = "5.3.1"
+version = "5.4.1"
 dependencies = [
  "anyhow",
  "chrono",
