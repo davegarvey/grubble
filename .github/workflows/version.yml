@@ -196,6 +196,7 @@ jobs:
         # remote branch has a different parent commit from a previous run.
         if gh pr view "${BRANCH}" >/dev/null 2>&1; then
           echo "PR already exists for ${BRANCH}; branch was force-pushed."
+          gh pr edit "${BRANCH}" --body "${CHANGELOG_BODY}"
         else
           gh pr create \
             --base main \
