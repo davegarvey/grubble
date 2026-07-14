@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.3] - 2026-07-14
+
+### Changed
+
+- present the canonical release-please flow as the recommended path (#85)
+- archive canonical-semver-workflow + sync delta specs (#84)
+- switch version.yml to canonical release-please flow (#80)
+
+### Fixed
+
+- decouple Open and Release steps so the workflow handles quiet periods (#86)
+- use -F for force=true to send as boolean (#83)
+- resolve orphan tags from old flow + fix force=true bug (#82)
+- use --raw --dry-run to capture the next version cleanly (#81)
+
 ## [5.2.2] - 2026-07-14
 
 ### Changed

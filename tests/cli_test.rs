@@ -632,6 +632,44 @@ fn setup_test_repo_with_remote() -> (TempDir, TempDir, Command) {
 }
 
 #[test]
+fn test_force_push_requires_git_branch() {
+    let (_dir, mut cmd) = setup_test_repo();
+
+    cmd.arg("--force-push");
+    cmd.arg("--push");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_ne!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--git-branch"),
+        "expected clap validation error naming --git-branch on stderr, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_force_push_without_push_succeeds_arg_layer() {
+    // --force-push only modifies push behavior; without --push there's
+    // nothing to force-push, so the bump should proceed normally.
+    let (dir, mut cmd) = setup_test_repo();
+
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "fix: something"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create fix commit");
+
+    cmd.arg("--force-push");
+    cmd.arg("--git-branch");
+    cmd.arg("release/v9.9.9");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "grubble failed: {}", stderr);
+}
+
+#[test]
 fn test_push_to_branch() {
     let (work_dir, remote_dir, mut cmd) = setup_test_repo_with_remote();
 

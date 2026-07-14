@@ -142,6 +142,35 @@ fn ensure_local_branch(branch: &str) -> BumperResult<()> {
     Ok(())
 }
 
+/// Push commits to a named branch, optionally with --force-with-lease.
+/// Uses --force-with-lease instead of plain --force to prevent overwriting
+/// upstream changes that the local ref doesn't know about. This is
+/// the correct choice when re-creating a workflow-owned branch from
+/// a different parent commit (e.g., when a release branch needs to
+/// be rebased to a new main HEAD).
+///
+/// # Panics
+/// Panics if `branch` is empty — callers must validate the branch name
+/// before calling. This is enforced at the CLI arg layer by the
+/// `--force-push` / `--git-branch` validation.
+pub fn push_branch(branch: &str, force_with_lease: bool) -> BumperResult<()> {
+    assert!(
+        !branch.is_empty(),
+        "push_branch requires a non-empty branch name"
+    );
+    ensure_local_branch(branch)?;
+    let mut args = vec!["push"];
+    if force_with_lease {
+        args.push("--force-with-lease");
+    }
+    args.push("--set-upstream");
+    args.push("origin");
+    args.push(branch);
+    run_git_command(&args)?;
+    run_git_command(&["push", "--tags"])?;
+    Ok(())
+}
+
 /// Update major and/or minor version tags to point to the current commit.
 /// Creates lightweight tags that can be force-pushed to update on remote.
 /// This is useful for GitHub Actions and libraries that want users to reference

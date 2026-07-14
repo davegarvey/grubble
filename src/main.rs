@@ -49,6 +49,14 @@ struct Args {
     #[arg(short, long)]
     push: bool,
 
+    /// Force push changes to remote (uses --force-with-lease).
+    /// Useful when pushing a workflow-owned branch that may need to
+    /// overwrite a remote branch with a different history (e.g., when
+    /// re-creating a release branch from a newer main commit).
+    /// Requires --git-branch to be set.
+    #[arg(long, requires = "git_branch")]
+    force_push: bool,
+
     /// Push to this branch instead of HEAD (e.g., release/v0.35.0).
     /// When set, uses `git push --set-upstream origin <branch>`.
     /// The branch is created locally if it doesn't exist.
@@ -204,6 +212,9 @@ fn run() -> BumperResult<ExitCode> {
     if args.push {
         config.push = true;
     }
+    if args.force_push {
+        config.force_push = true;
+    }
     if args.tag {
         config.tag = true;
     }
@@ -224,6 +235,16 @@ fn run() -> BumperResult<ExitCode> {
     }
     if args.changelog {
         config.changelog = true;
+    }
+
+    // --force-push requires --git-branch (manual check because --git-branch
+    // has a default value, so clap's `requires` attribute cannot enforce it)
+    if config.force_push && args.git_branch.is_empty() {
+        return Err(BumperError::InvalidConfig(
+            "--force-push requires --git-branch to be set. \
+             Use --git-branch <NAME> to specify the named branch to force-push."
+                .to_string(),
+        ));
     }
 
     let quiet = args.quiet;
@@ -421,10 +442,17 @@ fn run() -> BumperResult<ExitCode> {
     }
 
     if config.push {
-        if config.update_major_tag || config.update_minor_tag {
-            git::push_with_force_tags(&args.git_branch)?;
+        if config.force_push {
+            // --force-push requires --git-branch (validated above), so
+            // args.git_branch is guaranteed non-empty here.
+            git::push_branch(&args.git_branch, true)?;
+        } else if !args.git_branch.is_empty() {
+            // Named branch push (no force): use the consolidated helper.
+            git::push_branch(&args.git_branch, false)?;
+        } else if config.update_major_tag || config.update_minor_tag {
+            git::push_with_force_tags("")?;
         } else {
-            git::push(&args.git_branch)?;
+            git::push("")?;
         }
         let mut actions = vec!["Pushed changes"];
         if config.tag {
