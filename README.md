@@ -111,6 +111,7 @@ grubble --output json        # emit machine-readable output (with --raw or --bum
 grubble --quiet              # suppress the commit list
 grubble --git-branch release/v0.35.0  # push the bump to a release branch (works on protected branches)
 grubble --git-branch release/v0.35.0 --force-push  # same, with --force-with-lease (for workflow-owned branches)
+grubble --changelog-entry             # print the latest entry from CHANGELOG.md
 grubble --release-from-pr 79          # resolve a merged release PR to a tag spec (for canonical release-please workflows)
 grubble --help               # full flag reference
 ```

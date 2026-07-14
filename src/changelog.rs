@@ -158,6 +158,46 @@ fn generate_changelog_entry_at_path(
     Ok(())
 }
 
+/// Read the most recent entry from CHANGELOG.md.
+pub fn read_latest_changelog_entry() -> BumperResult<String> {
+    read_latest_changelog_entry_at_path(Path::new(CHANGELOG_FILE))
+}
+
+fn read_latest_changelog_entry_at_path(path: &Path) -> BumperResult<String> {
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    let content = fs::read_to_string(path)?;
+    Ok(extract_changelog_entry(&content))
+}
+
+/// Extract the first (latest) `## [version]` section from changelog content.
+/// Returns everything from the first `## [` header through the next `## [`
+/// header (or EOF), trimmed.
+fn extract_changelog_entry(content: &str) -> String {
+    let lines = content.lines();
+    let mut result = String::new();
+    let mut in_section = false;
+
+    for line in lines {
+        if line.starts_with("## [") && !in_section {
+            in_section = true;
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+        if in_section {
+            if line.starts_with("## [") {
+                break;
+            }
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+
+    result.trim().to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -596,5 +636,61 @@ mod tests {
                 panic!("markdownlint-cli not available but required in CI: {}", e);
             }
         }
+    }
+
+    #[test]
+    fn test_extract_changelog_entry_multiple_entries() {
+        let content = "# Changelog\n\
+            \n\
+            ## [1.1.0] - 2026-07-14\n\
+            \n\
+            ### Added\n\
+            \n\
+            - new feature\n\
+            \n\
+            ## [1.0.0] - 2026-07-13\n\
+            \n\
+            ### Fixed\n\
+            \n\
+            - bug fix\n";
+        assert_eq!(
+            extract_changelog_entry(content),
+            "## [1.1.0] - 2026-07-14\n\n### Added\n\n- new feature"
+        );
+    }
+
+    #[test]
+    fn test_extract_changelog_entry_single_entry() {
+        let content = "# Changelog\n\
+            \n\
+            ## [1.0.0] - 2026-07-14\n\
+            \n\
+            ### Added\n\
+            \n\
+            - first release\n";
+        assert_eq!(
+            extract_changelog_entry(content),
+            "## [1.0.0] - 2026-07-14\n\n### Added\n\n- first release"
+        );
+    }
+
+    #[test]
+    fn test_extract_changelog_entry_empty_content() {
+        assert_eq!(extract_changelog_entry(""), "");
+        assert_eq!(extract_changelog_entry("# Changelog\n\n"), "");
+    }
+
+    #[test]
+    fn test_extract_changelog_entry_header_only() {
+        let content = "# Changelog\n\nAll notable changes.\n";
+        assert_eq!(extract_changelog_entry(content), "");
+    }
+
+    #[test]
+    fn test_read_latest_changelog_entry_at_path_missing_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("NONEXISTENT.md");
+        let result = read_latest_changelog_entry_at_path(&path).unwrap();
+        assert_eq!(result, "");
     }
 }
