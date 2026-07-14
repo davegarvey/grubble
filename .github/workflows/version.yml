@@ -314,7 +314,15 @@ jobs:
         # already set to SUCCESS via the Check Runs API above, so the
         # PR satisfies branch protection immediately. A human can still
         # cancel auto-merge or make changes before the merge completes.
-        gh pr merge "${BRANCH}" --auto --squash || true
+        # Retry a few times because the PR may not be fully evaluated
+        # by GitHub immediately after creation.
+        for i in 1 2 3 4 5; do
+          if gh pr merge "${BRANCH}" --auto --squash 2>/dev/null; then
+            echo "Auto-merge enabled on ${BRANCH}"
+            break
+          fi
+          sleep 3
+        done
 
   test:
     name: Pre-release Tests
