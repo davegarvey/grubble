@@ -209,19 +209,30 @@ jobs:
           exit 1
         fi
 
-        # Create the v<version> tag on the merge commit (idempotent: skip
-        # if it already exists on this commit). Only emit `released=true`
-        # if we actually created a NEW tag — this prevents subsequent
-        # workflow runs (e.g., on every push to main) from re-triggering
-        # the full test/build/publish pipeline for an already-released
-        # version.
+        # Create the v<version> tag on the merge commit. The new flow always
+        # tags the merge commit on first run, so there should never be a
+        # stale tag at a different commit. If a tag does exist at a
+        # different commit, that means the previous (broken) pre-tagging
+        # flow left an orphan behind — error out and ask a maintainer to
+        # clean it up rather than silently moving tags.
         RELEASED=false
         if gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
-          EXISTING_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG_NAME}" | jq -r '.object.sha')
+          EXISTING_TAG_OBJ=$(gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG_NAME}")
+          EXISTING_TAG_SHA=$(echo "$EXISTING_TAG_OBJ" | jq -r '.object.sha')
+          EXISTING_TYPE=$(echo "$EXISTING_TAG_OBJ" | jq -r '.object.type')
+          if [ "$EXISTING_TYPE" = "tag" ]; then
+            EXISTING_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${EXISTING_TAG_SHA}" | jq -r '.object.sha')
+          else
+            EXISTING_SHA="$EXISTING_TAG_SHA"
+          fi
+
           if [ "$EXISTING_SHA" = "$MERGE_SHA" ]; then
             echo "Tag ${TAG_NAME} already exists on ${MERGE_SHA}; nothing to do"
           else
-            echo "::error::Tag ${TAG_NAME} exists on a different commit (${EXISTING_SHA}); refusing to move"
+            echo "::error::Tag ${TAG_NAME} exists on ${EXISTING_SHA} but the release PR merged at ${MERGE_SHA}."
+            echo "::error::This usually means a previous workflow left an orphan tag."
+            echo "::error::Fix: delete the orphan tag and re-run, e.g.:"
+            echo "::error::  gh api -X DELETE repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG_NAME}"
             exit 1
           fi
         else
@@ -235,15 +246,17 @@ jobs:
           RELEASED=true
         fi
 
-        # Update the v<major> floating tag to the same merge commit.
+        # Update the v<major> floating tag to the same merge commit. Always
+        # force — the v<major> tag moves forward on every release.
         if gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${MAJOR_TAG}" >/dev/null 2>&1; then
           echo "Updating floating tag ${MAJOR_TAG} to ${MERGE_SHA}"
           gh api \
             --method PATCH \
             -H "Accept: application/vnd.github+json" \
             "repos/${GITHUB_REPOSITORY}/git/refs/tags/${MAJOR_TAG}" \
-            -f "sha=${MERGE_SHA}" \
-            -f "force=true" >/dev/null
+            --input - <<EOF >/dev/null
+{"sha":"${MERGE_SHA}","force":true}
+EOF
         else
           echo "Creating floating tag ${MAJOR_TAG} on ${MERGE_SHA}"
           gh api \
