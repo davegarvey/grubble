@@ -158,41 +158,91 @@ runs:
 
     - name: Resolve release version
       id: release
+      env:
+        ACTION_REF: ${{ github.action_ref }}
       shell: bash
       run: |
-        REF="${{ github.action_ref }}"
+        REF="$ACTION_REF"
         REF="${REF#refs/tags/}"
         REF="${REF#refs/heads/}"
 
-        RESOLVED_VERSION=""
-
-        if echo "$REF" | grep -qE '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
-          echo "Attempting to resolve release: $REF"
-          RELEASE_URL="https://api.github.com/repos/davegarvey/grubble/releases/tags/${REF}"
-          RELEASE_DATA=$(curl -sS "$RELEASE_URL")
-          RESOLVED_VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
-
-          if [ "$RESOLVED_VERSION" = "null" ] || [ -z "$RESOLVED_VERSION" ]; then
-            echo "::warning::Release tag '${REF}' not found — falling back to latest release"
-            RESOLVED_VERSION=""
-          fi
+        # gh is pre-installed on GitHub-hosted runners. When GITHUB_TOKEN is
+        # set, use authenticated API calls to avoid the 60 req/hr rate limit.
+        USE_AUTH=false
+        if command -v gh &>/dev/null && [ -n "${GITHUB_TOKEN:-}" ]; then
+          USE_AUTH=true
         else
-          echo "::warning::Action ref '${REF}' is not a specific version tag — falling back to latest release"
+          echo "::warning::GITHUB_TOKEN not available — using unauthenticated API (rate-limited to 60 req/hr)"
         fi
 
-        if [ -z "$RESOLVED_VERSION" ]; then
-          echo "Fetching latest release..."
-          RELEASE_URL="https://api.github.com/repos/davegarvey/grubble/releases/latest"
-          RELEASE_DATA=$(curl -sS "$RELEASE_URL")
-          RESOLVED_VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
+        # Fetch a single resource via the GitHub API.
+        api_get() {
+          local url="$1" jq_expr="$2"
+          if [ "$USE_AUTH" = "true" ]; then
+            gh api "$url" --jq "$jq_expr" 2>/dev/null || echo ""
+          else
+            curl -sS "https://api.github.com$url" | jq -r "$jq_expr" 2>/dev/null || echo ""
+          fi
+        }
 
-          if [ "$RESOLVED_VERSION" = "null" ] || [ -z "$RESOLVED_VERSION" ]; then
-            echo "::error::Failed to fetch latest release version"
+        # Paginate through a list resource, returning newline-separated values.
+        api_list() {
+          local url="$1" jq_expr="$2"
+          if [ "$USE_AUTH" = "true" ]; then
+            gh api "$url" --jq "$jq_expr" --paginate 2>/dev/null || true
+          else
+            curl -sS "https://api.github.com${url}?per_page=100" | jq -r "$jq_expr" 2>/dev/null || true
+          fi
+        }
+
+        # Check whether a given release tag has binary assets.
+        release_has_assets() {
+          local tag="$1" count
+          count=$(api_get "/repos/davegarvey/grubble/releases/tags/$tag" '(.assets | length) // 0')
+          [ "${count:-0}" -gt 0 ] 2>/dev/null
+        }
+
+        RESOLVED_VERSION=""
+
+        # 1. Direct semver tag (vX.Y.Z)
+        if echo "$REF" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+          RESOLVED_VERSION=$(api_get "/repos/davegarvey/grubble/releases/tags/$REF" '.tag_name')
+          if [ -z "$RESOLVED_VERSION" ] || [ "$RESOLVED_VERSION" = "null" ]; then
+            echo "::warning::Release tag '$REF' not found on GitHub"
+            RESOLVED_VERSION=""
+          elif ! release_has_assets "$REF"; then
+            echo "::error::Release '$REF' has no downloadable binary assets."
+            echo "::error::Pin to a version with assets (e.g., @v5.3.0) or use @v5 to track the latest."
             exit 1
           fi
         fi
 
-        echo "version=$RESOLVED_VERSION" >> $GITHUB_OUTPUT
+        # 2. Floating minor tag (vX.Y) — resolve to latest matching semver
+        if [ -z "$RESOLVED_VERSION" ] && echo "$REF" | grep -qE '^v[0-9]+\.[0-9]+$'; then
+          RESOLVED_VERSION=$(api_list "/repos/davegarvey/grubble/releases" '[.[] | select(.assets | length > 0) | .tag_name] | .[]' | grep -E "^${REF//./\\.}\." | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+        fi
+
+        # 3. Floating major tag (vX) — resolve to latest matching semver
+        if [ -z "$RESOLVED_VERSION" ] && echo "$REF" | grep -qE '^v[0-9]+$'; then
+          RESOLVED_VERSION=$(api_list "/repos/davegarvey/grubble/releases" '[.[] | select(.assets | length > 0) | .tag_name] | .[]' | grep -E "^${REF//./\\.}\." | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+        fi
+
+        # 4. Fallback: latest release
+        if [ -z "$RESOLVED_VERSION" ]; then
+          RESOLVED_VERSION=$(api_get "/repos/davegarvey/grubble/releases/latest" '.tag_name')
+          if [ -z "$RESOLVED_VERSION" ] || [ "$RESOLVED_VERSION" = "null" ]; then
+            echo "::error::Failed to fetch latest release version from GitHub API"
+            exit 1
+          fi
+          if ! release_has_assets "$RESOLVED_VERSION"; then
+            echo "::error::Latest release '$RESOLVED_VERSION' has no binary assets."
+            echo "::error::No downloadable grubble release is available."
+            echo "::error::Install via 'cargo install grubble' or open an issue."
+            exit 1
+          fi
+        fi
+
+        echo "version=$RESOLVED_VERSION" >> "$GITHUB_OUTPUT"
         echo "Using grubble version: $RESOLVED_VERSION"
 
     - name: Download binary
