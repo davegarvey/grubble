@@ -37,8 +37,20 @@ pub fn get_last_tag() -> BumperResult<Option<String>> {
     }
 }
 
+/// Like get_last_tag but only considers full semver tags matching the configured
+/// prefix (e.g., v5.2.0, v4.9.4). Excludes floating major/minor tags (v5, v4)
+/// that GitHub Actions uses for version references but aren't valid semver.
+fn get_last_semver_tag(config: &Config) -> BumperResult<Option<String>> {
+    let pattern = format!("{}[0-9]*.[0-9]*.[0-9]*", config.tag_prefix);
+    match run_git_command(&["describe", "--tags", "--abbrev=0", "--match", &pattern]) {
+        Ok(tag) if !tag.is_empty() => Ok(Some(tag)),
+        Ok(_) => Ok(None),
+        Err(_) => Ok(None),
+    }
+}
+
 pub fn get_last_tag_version(config: &Config) -> BumperResult<Option<Version>> {
-    let last_tag = get_last_tag()?;
+    let last_tag = get_last_semver_tag(config)?;
 
     if let Some(tag) = last_tag {
         let prefix = &config.tag_prefix;
