@@ -50,6 +50,7 @@ jobs:
     permissions:
       contents: write        # Push commits and tags
       pull-requests: write   # Create the release PR
+      statuses: write        # Set commit status on release branch
     steps:
     - uses: actions/checkout@v4
       with:
