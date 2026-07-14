@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.4] - 2026-07-14
+
+### Changed
+
+- restructure README into dedicated docs/ pages (#95)
+- track openspec artifacts (#93)
+
+### Fixed
+
+- also unset git extraheader when using PAT for push (#101)
+- use PAT for release branch push so CI triggers on release PRs (#100)
+- update release PR body on force-push so CHANGELOG entry stays current (#99)
+- get_last_tag should exclude floating major/minor tags (v5, v4) (#98)
+- remove tag/releaseNotes/updateMajorTag from .versionrc.json to prevent Open step tag-push failure (#96)
+- remove bubble dependency, use CHANGELOG entry as release body
+- respect user's version pin when downloading binary (#91) (#92)
+
 ## [5.2.3] - 2026-07-14
 
 ### Changed
