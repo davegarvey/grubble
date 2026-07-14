@@ -50,7 +50,7 @@ jobs:
     permissions:
       contents: write        # Push commits and tags
       pull-requests: write   # Create the release PR
-      statuses: write        # Set commit status on release branch
+      checks: write          # Create check runs on release branch
     steps:
     - uses: actions/checkout@v4
       with:
@@ -274,18 +274,21 @@ jobs:
           --push \
           --force-push
 
-        # Set the required "test" commit status to success on the pushed
-        # commit. The release branch content is the same as main plus a
-        # version bump + CHANGELOG entry — both validated by CI on main.
-        # Without this, the pull_request event from the bot push would
-        # leave the required check permanently unsatisfied (GitHub does
-        # not create workflow runs for events triggered by GITHUB_TOKEN).
+        # Create a passing check run for the required "test" check on the
+        # pushed commit. The pull_request event from the bot push cannot
+        # trigger a new workflow run (GitHub does not create runs from
+        # GITHUB_TOKEN events), so we create the check directly via the
+        # Check Runs API. The release branch content is the same as main
+        # plus a version bump + CHANGELOG entry — both validated on main.
         PUSHED_SHA=$(git rev-parse "${BRANCH}")
-        gh api "repos/${GITHUB_REPOSITORY}/statuses/${PUSHED_SHA}" \
+        gh api "repos/${GITHUB_REPOSITORY}/check-runs" \
           --method POST \
-          -f "state=success" \
-          -f "description=Content validated by CI on main" \
-          -f "context=test"
+          -f "name=test" \
+          -f "head_sha=${PUSHED_SHA}" \
+          -f "status=completed" \
+          -f "conclusion=success" \
+          -f "output[title]=Release branch check" \
+          -f "output[summary]=Content validated by CI on main"
 
         # Read the CHANGELOG entry to use as the PR body.
         CHANGELOG_BODY=$(./target/release/grubble --changelog-entry || echo "")
