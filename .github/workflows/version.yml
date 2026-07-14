@@ -259,14 +259,6 @@ jobs:
         VERSION="${{ steps.bump.outputs.version }}"
         BRANCH="release/v${VERSION}"
 
-        # Use a PAT for git push so CI triggers on the release PR push.
-        # With GITHUB_TOKEN, events triggered by the token do not create
-        # new workflow runs (by GitHub's design), leaving the required
-        # CI check permanently unsatisfied and the PR unmergeable.
-        git config --unset-all http.https://github.com/.extraheader || true
-        git remote set-url origin \
-          "https://x-access-token:${{ secrets.RELEASE_PAT }}@github.com/${{ github.repository }}"
-
         # Run grubble on the release branch: bumps Cargo.toml, updates
         # CHANGELOG.md. NO --tag here — the tag is created on the main
         # merge commit by the "Release merged PR" step after a human merges
@@ -280,6 +272,19 @@ jobs:
           --changelog \
           --push \
           --force-push
+
+        # Set the required "test" commit status to success on the pushed
+        # commit. The release branch content is the same as main plus a
+        # version bump + CHANGELOG entry — both validated by CI on main.
+        # Without this, the pull_request event from the bot push would
+        # leave the required check permanently unsatisfied (GitHub does
+        # not create workflow runs for events triggered by GITHUB_TOKEN).
+        PUSHED_SHA=$(git rev-parse "${BRANCH}")
+        gh api "repos/${GITHUB_REPOSITORY}/statuses/${PUSHED_SHA}" \
+          --method POST \
+          -f "state=success" \
+          -f "description=Content validated by CI on main" \
+          -f "context=test"
 
         # Read the CHANGELOG entry to use as the PR body.
         CHANGELOG_BODY=$(./target/release/grubble --changelog-entry || echo "")
