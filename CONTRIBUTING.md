@@ -256,6 +256,10 @@ Use the existing `rust.rs` and `node.rs` strategies as references — they are t
 - **Discussions**: [GitHub Discussions](https://github.com/davegarvey/grubble/discussions)
 - **Documentation**: See README.md for detailed usage instructions
 
+## Documentation
+
+Documentation lives in the `docs/` directory. The README is a landing page that links to dedicated docs files for each topic. When adding documentation, create or update the relevant file in `docs/` rather than adding to the README.
+
 ## License
 
 By contributing to Grubble, you agree that your contributions will be licensed under the same MIT License that covers the project.
