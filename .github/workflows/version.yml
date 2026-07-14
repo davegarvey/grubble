@@ -89,7 +89,7 @@ jobs:
     #   1. Compute the next version (dry-run, no side effects).
     #   2. If the version would change, open or update a release PR on a
     #      release/v<version> branch. The PR contains the version bump
-    #      commit + CHANGELOG entry. NO auto-merge — a human reviews and
+    #      commit + CHANGELOG entry. Auto-merge is enabled below.
     #      merges the PR.
     #   3. On the next push to main, detect the most recent merged release
     #      PR. If found, create the v<version> tag and GitHub Release on
@@ -314,7 +314,15 @@ jobs:
         # already set to SUCCESS via the Check Runs API above, so the
         # PR satisfies branch protection immediately. A human can still
         # cancel auto-merge or make changes before the merge completes.
-        gh pr merge "${BRANCH}" --auto --squash || true
+        # Retry a few times because the PR may not be fully evaluated
+        # by GitHub immediately after creation.
+        for i in 1 2 3 4 5; do
+          if gh pr merge "${BRANCH}" --auto --squash 2>/dev/null; then
+            echo "Auto-merge enabled on ${BRANCH}"
+            break
+          fi
+          sleep 3
+        done
 
   test:
     name: Pre-release Tests
