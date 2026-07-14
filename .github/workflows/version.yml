@@ -145,80 +145,13 @@ jobs:
           echo "merged=false" >> $GITHUB_OUTPUT
         fi
 
-    - name: Open or update release PR
-      # The Open and Release steps are independent. The Open step runs
-      # whenever a new release is needed (Bump step detected warrants a
-      # change), regardless of whether a previous release PR is still
-      # being processed by the Release step. They do not race — the
-      # workflow steps are sequential, and the Release step's `gh api`
-      # calls are independent of the Open step's branch + PR creation.
-      #
-      # This is what makes the workflow correct after a "quiet period":
-      # if v5.2.2 was released long ago and a new fix: lands on main,
-      # the Bump step computes v5.2.3 (changed=true), the Detect step
-      # still finds the old v5.2.2 release PR (merged=true), and the
-      # Open step opens a fresh release PR for v5.2.3. Without the
-      # decoupling here, the workflow would silently skip the new
-      # release PR — which is the bug this fix addresses.
-      if: steps.bump.outputs.changed == 'true'
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        VERSION="${{ steps.bump.outputs.version }}"
-        BRANCH="release/v${VERSION}"
-
-        # Use a PAT for git push so CI triggers on the release PR push.
-        # With GITHUB_TOKEN, events triggered by the token do not create
-        # new workflow runs (by GitHub's design), leaving the required
-        # CI check permanently unsatisfied and the PR unmergeable.
-        # Must also clear the extraheader that actions/checkout sets,
-        # otherwise git uses the GITHUB_TOKEN from the header instead
-        # of the URL-embedded PAT.
-        git config --unset-all http.https://github.com/.extraheader || true
-        git remote set-url origin \
-          "https://x-access-token:${{ secrets.RELEASE_PAT }}@github.com/${{ github.repository }}"
-
-        # Run grubble on the release branch: bumps Cargo.toml, updates
-        # CHANGELOG.md. NO --tag here — the tag is created on the main
-        # merge commit by the "Release merged PR" step after a human merges
-        # the PR. Pre-tagging the release branch commit is what caused
-        # repeated tag-orphaning issues (#73, PRs #76/#77/#78). The
-        # canonical release-please pattern is to tag the merge commit.
-        git checkout -B "${BRANCH}"
-        ./target/release/grubble \
-          --git-user-name "github-actions[bot]" \
-          --git-user-email "41898282+github-actions[bot]@users.noreply.github.com" \
-          --git-branch "${BRANCH}" \
-          --preset rust \
-          --changelog \
-          --push \
-          --force-push
-
-        # Read the CHANGELOG entry to use as the PR body. This body then
-        # flows through to the GitHub Release notes when the PR is merged
-        # and --release-from-pr reads it. No external AI dependency needed.
-        CHANGELOG_BODY=$(./target/release/grubble --changelog-entry || echo "")
-
-        # Open or update the PR. We don't enable auto-merge — a human
-        # reviews and merges the release PR. This is the canonical
-        # release-please pattern.
-        # Note: --force-push ensures the release branch is always reset
-        # to the current main HEAD (plus the bump commit), even if the
-        # remote branch has a different parent commit from a previous run.
-        if gh pr view "${BRANCH}" >/dev/null 2>&1; then
-          echo "PR already exists for ${BRANCH}; branch was force-pushed."
-          gh pr edit "${BRANCH}" --body "${CHANGELOG_BODY}"
-        else
-          gh pr create \
-            --base main \
-            --head "${BRANCH}" \
-            --title "Release v${VERSION}" \
-            --body "${CHANGELOG_BODY}"
-          echo "Release PR opened for ${BRANCH}"
-        fi
-
     - name: Release merged PR
       id: release
+      # Process merged release PRs FIRST, so tags are created before the
+      # Open step runs. This avoids the "file ahead of tag" error when
+      # Cargo.toml has been bumped by a merged release PR but the tag
+      # hasn't been created yet. The Release step is idempotent and the
+      # Open step handles the independent "new release needed" case.
       if: steps.detect.outputs.merged == 'true'
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -241,12 +174,7 @@ jobs:
           exit 1
         fi
 
-        # Create the v<version> tag on the merge commit. The new flow always
-        # tags the merge commit on first run, so there should never be a
-        # stale tag at a different commit. If a tag does exist at a
-        # different commit, that means the previous (broken) pre-tagging
-        # flow left an orphan behind — error out and ask a maintainer to
-        # clean it up rather than silently moving tags.
+        # Create the v<version> tag on the merge commit.
         RELEASED=false
         if gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
           EXISTING_TAG_OBJ=$(gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG_NAME}")
@@ -278,12 +206,9 @@ jobs:
           RELEASED=true
         fi
 
-        # Update the v<major> floating tag to the same merge commit. Always
-        # force — the v<major> tag moves forward on every release.
+        # Update the v<major> floating tag to the same merge commit.
         if gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${MAJOR_TAG}" >/dev/null 2>&1; then
           echo "Updating floating tag ${MAJOR_TAG} to ${MERGE_SHA}"
-          # -F (capital) sends "force=true" as a JSON boolean, -f (lower)
-          # sends it as a string which the API rejects with 422.
           gh api \
             --method PATCH \
             -H "Accept: application/vnd.github+json" \
@@ -301,8 +226,6 @@ jobs:
         fi
 
         # Create the GitHub Release for the tag (if it doesn't exist yet).
-        # The body is the release PR body; the CHANGELOG entry is what
-        # callers will see most prominently.
         if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
           echo "Creating GitHub release for ${TAG_NAME}"
           gh release create "${TAG_NAME}" \
@@ -315,9 +238,6 @@ jobs:
           echo "GitHub release for ${TAG_NAME} already exists"
         fi
 
-        # Emit step outputs for downstream jobs. `released=true` is only
-        # set when a new tag or release was created, so the downstream
-        # jobs run exactly once per release.
         if [ "$RELEASED" = "true" ]; then
           echo "released=true" >> $GITHUB_OUTPUT
         else
@@ -325,6 +245,56 @@ jobs:
         fi
         echo "version=${VERSION}" >> $GITHUB_OUTPUT
         echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+
+    - name: Open or update release PR
+      # The Open step runs whenever a new release is needed (Bump step
+      # detected a change), regardless of whether a previously-merged
+      # release PR is still being processed by the Release step. By the
+      # time this step runs, the Release step above has already created
+      # any needed tags, so the "file ahead of tag" validation passes.
+      if: steps.bump.outputs.changed == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        VERSION="${{ steps.bump.outputs.version }}"
+        BRANCH="release/v${VERSION}"
+
+        # Use a PAT for git push so CI triggers on the release PR push.
+        # With GITHUB_TOKEN, events triggered by the token do not create
+        # new workflow runs (by GitHub's design), leaving the required
+        # CI check permanently unsatisfied and the PR unmergeable.
+        git config --unset-all http.https://github.com/.extraheader || true
+        git remote set-url origin \
+          "https://x-access-token:${{ secrets.RELEASE_PAT }}@github.com/${{ github.repository }}"
+
+        # Run grubble on the release branch: bumps Cargo.toml, updates
+        # CHANGELOG.md. NO --tag here — the tag is created on the main
+        # merge commit by the "Release merged PR" step after a human merges
+        # the PR.
+        git checkout -B "${BRANCH}"
+        ./target/release/grubble \
+          --git-user-name "github-actions[bot]" \
+          --git-user-email "41898282+github-actions[bot]@users.noreply.github.com" \
+          --git-branch "${BRANCH}" \
+          --preset rust \
+          --changelog \
+          --push \
+          --force-push
+
+        # Read the CHANGELOG entry to use as the PR body.
+        CHANGELOG_BODY=$(./target/release/grubble --changelog-entry || echo "")
+
+        if gh pr view "${BRANCH}" >/dev/null 2>&1; then
+          echo "PR already exists for ${BRANCH}; branch was force-pushed."
+          gh pr edit "${BRANCH}" --body "${CHANGELOG_BODY}"
+        else
+          gh pr create \
+            --base main \
+            --head "${BRANCH}" \
+            --title "Release v${VERSION}" \
+            --body "${CHANGELOG_BODY}"
+          echo "Release PR opened for ${BRANCH}"
+        fi
 
   test:
     name: Pre-release Tests
