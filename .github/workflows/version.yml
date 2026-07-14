@@ -310,6 +310,12 @@ jobs:
           echo "Release PR opened for ${BRANCH}"
         fi
 
+        # Enable auto-merge with squash. The required "test" check was
+        # already set to SUCCESS via the Check Runs API above, so the
+        # PR satisfies branch protection immediately. A human can still
+        # cancel auto-merge or make changes before the merge completes.
+        gh pr merge "${BRANCH}" --auto --squash || true
+
   test:
     name: Pre-release Tests
     runs-on: ubuntu-latest

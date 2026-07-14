@@ -17,7 +17,7 @@ This is the same pattern used by [`semantic-release`](https://github.com/semanti
 ### The flow
 
 1. A conventional commit (e.g. `feat:`, `fix:`) lands on `main`.
-2. Your release workflow runs `grubble --dry-run` to compute the next version. If it would change, the workflow opens (or updates) a release PR on a `release/v<version>` branch. The PR contains the version bump commit and the CHANGELOG entry. **No auto-merge.**
+2. Your release workflow runs `grubble --dry-run` to compute the next version. If it would change, the workflow opens (or updates) a release PR on a `release/v<version>` branch. The PR contains the version bump commit, the CHANGELOG entry, and is set to auto-merge (squash).
 3. A maintainer reviews the release PR and merges it (squash or merge commit — both work).
 4. On the next push to `main`, the workflow detects the merged release PR and creates the `v<version>` tag and a GitHub Release on the merge commit. The `v<major>` floating tag is also updated.
 
@@ -124,7 +124,7 @@ jobs:
 
 ### Reference implementation: grubble's own version.yml
 
-The repo's own release workflow (`.github/workflows/version.yml`) is the canonical example. It runs the Bump step (`grubble --raw --dry-run`) to compute the next version, opens or updates the release PR (no auto-merge), and on the next push after merge runs `--release-from-pr` to resolve the merged PR and create the tag + GitHub Release on the merge commit via `gh api`.
+The repo's own release workflow (`.github/workflows/version.yml`) is the canonical example. It runs the Bump step (`grubble --raw --dry-run`) to compute the next version, opens or updates the release PR (with auto-merge enabled when branch protection allows), and on the next push after merge runs `--release-from-pr` to resolve the merged PR and create the tag + GitHub Release on the merge commit via `gh api`.
 
 ## Direct-Push Style (Alternative)
 

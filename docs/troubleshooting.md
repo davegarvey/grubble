@@ -37,7 +37,7 @@ Empty or invalid `.versionrc.json` falls back to defaults with a warning. Run gr
 
 **Auto-merge PR is stuck in "Waiting for approval"**
 
-GitHub does not allow a bot-created PR to approve itself. If your branch protection rule requires review approval, a PR opened by `create-pr: true` (which uses `GITHUB_TOKEN`) cannot satisfy the approval check and `auto-merge: true` will never trigger. The fix is to remove `auto-merge` and have a human click "Merge" on the release PR — i.e. use the [release-please flow](release-workflow.md). This is the same reason grubble's own `version.yml` workflow intentionally does **not** call `gh pr merge --auto`.
+GitHub does not allow a bot-created PR to approve itself. If your branch protection rule requires review approval, auto-merge on the release PR will never trigger. Disable auto-merge and have a human click "Merge" on the release PR. Grubble's own workflow enables auto-merge because its branch protection does not require review approval (only the `test` check is required).
 
 **"head branch is not up to date with the base branch"**
 
