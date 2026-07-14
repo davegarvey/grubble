@@ -19,6 +19,9 @@ pub struct Config {
     pub push: bool,
 
     #[serde(default)]
+    pub force_push: bool,
+
+    #[serde(default)]
     pub tag: bool,
 
     #[serde(default = "default_preset")]
@@ -98,6 +101,7 @@ impl Default for Config {
             commit_prefix: default_commit_prefix(),
             tag_prefix: default_tag_prefix(),
             push: false,
+            force_push: false,
             tag: false,
             preset: default_preset(),
             release_notes: false,
