@@ -149,21 +149,44 @@ runs:
         echo "archive=$ARCHIVE" >> $GITHUB_OUTPUT
         echo "os=$OS" >> $GITHUB_OUTPUT
 
-    - name: Get latest release
+    - name: Resolve release version
       id: release
       shell: bash
       run: |
-        RELEASE_URL="https://api.github.com/repos/davegarvey/grubble/releases/latest"
-        RELEASE_DATA=$(curl -sS "$RELEASE_URL")
-        VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
-        
-        if [ "$VERSION" = "null" ] || [ -z "$VERSION" ]; then
-          echo "::error::Failed to fetch latest release version"
-          exit 1
+        REF="${{ github.action_ref }}"
+        REF="${REF#refs/tags/}"
+        REF="${REF#refs/heads/}"
+
+        RESOLVED_VERSION=""
+
+        if echo "$REF" | grep -qE '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "Attempting to resolve release: $REF"
+          RELEASE_URL="https://api.github.com/repos/davegarvey/grubble/releases/tags/${REF}"
+          RELEASE_DATA=$(curl -sS "$RELEASE_URL")
+          RESOLVED_VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
+
+          if [ "$RESOLVED_VERSION" = "null" ] || [ -z "$RESOLVED_VERSION" ]; then
+            echo "::warning::Release tag '${REF}' not found — falling back to latest release"
+            RESOLVED_VERSION=""
+          fi
+        else
+          echo "::warning::Action ref '${REF}' is not a specific version tag — falling back to latest release"
         fi
-        
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "Using grubble version: $VERSION"
+
+        if [ -z "$RESOLVED_VERSION" ]; then
+          echo "Fetching latest release..."
+          RELEASE_URL="https://api.github.com/repos/davegarvey/grubble/releases/latest"
+          RELEASE_DATA=$(curl -sS "$RELEASE_URL")
+          RESOLVED_VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
+
+          if [ "$RESOLVED_VERSION" = "null" ] || [ -z "$RESOLVED_VERSION" ]; then
+            echo "::error::Failed to fetch latest release version"
+            exit 1
+          fi
+        fi
+
+        echo "version=$RESOLVED_VERSION" >> $GITHUB_OUTPUT
+        echo "Using grubble version: $RESOLVED_VERSION"
 
     - name: Download binary
       shell: bash
