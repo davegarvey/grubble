@@ -232,7 +232,7 @@ jobs:
             --target "${MERGE_SHA}" \
             --title "v${VERSION}" \
             --notes "${BODY}" \
-            --verify-latest
+            --verify-tag
           RELEASED=true
         else
           echo "GitHub release for ${TAG_NAME} already exists"
