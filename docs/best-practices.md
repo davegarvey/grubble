@@ -1,0 +1,32 @@
+# Best Practices
+
+Patterns and pitfalls, distilled from the release-please / semantic-release playbook and from grubble's own CI.
+
+## Releases
+
+- **Use the release-please flow** for any project on a protected branch. The release-please flow is the recommended pattern because it gives you a human review gate, an audit trail, survives squash vs. merge commit, and works on protected branches without a bypass token.
+- **Do not enable `auto-merge` on the release PR** if your branch protection requires review approval. GitHub will not let a bot-created PR approve itself, so the PR will sit in "Waiting for approval" indefinitely. Let a human click "Merge" on the release PR — that is the security model.
+- **Enable auto-merge on feature PRs when branch protection requires up-to-date branches.** If your branch protection rule has "Require branches to be up to date before merging" enabled, a direct `gh pr merge` on a stale branch will fail with `head branch is not up to date with the base branch`. Use `gh pr merge --auto --squash` followed by `gh pr update-branch <NUMBER>` to rebase and let auto-merge complete when CI passes.
+- **The Open and Release steps in the version workflow are independent.** The Open step runs whenever a new release is needed (Bump step reports `changed=true`); the Release step runs whenever a previously-merged release PR is detected. They do not race, and decoupling them is what makes the workflow correct after a "quiet period" (when no release PRs have been merged for a while). If you copy the workflow into your own repo, do not re-introduce a gating dependency between them.
+- **Tags are created on the main merge commit, not on the release branch tip.** This is the canonical pattern and it eliminates tag-orphaning on squash merges. Pre-tagging the release branch (the older grubble default) is a known footgun — the tag is at risk of being detached from `main` after a squash merge.
+- **Floating major tags (`v5`) and minor tags (`v5.2`) are force-moved on every release.** Consumers who pin to `owner/repo@v5` automatically get the latest v5.x.x. Only enable `--update-major-tag` if you follow semver strictly — a breaking change bumps the major and silently moves the tag for everyone.
+- **Use the `release-from-pr` Action input in your post-merge step.** It is the read-only resolution step that turns a merged release PR into a tag spec (`version`, `tag_name`, `major_tag_name`, `merge_commit_sha`, `title`, `body`) without writing any state. Your workflow then does the `gh api` calls to create the tag and GitHub Release. This is cleaner than shelling out to `grubble --release-from-pr` in a `run:` step, because the Action handles binary download in each invocation.
+- **Force-push the release branch with `--force-with-lease`, not plain `--force`.** The release branch is owned by the workflow — it is re-created from `main` on every push, so it must be force-pushable. Use `--force-with-lease` (via `--force-push`) instead of plain `--force` because it fails if the remote has been updated since the local checkout (e.g., a human pushed a fix to the branch). The `--force-push` flag requires `--git-branch` and is rejected if you try to use it on the current branch.
+
+## CI gating
+
+- **Use `--raw --dry-run` (or `--bump-type`) to gate bumps in CI, not exit codes.** `--dry-run` always exits 0 in v5+, so it can no longer be used as a "would a bump happen?" signal. Use `--raw --dry-run` (returns just the next version) and compare to the current `Cargo.toml` / `package.json` version, or use `--bump-type` (returns `major` / `minor` / `patch` / `none`) for a clean gate.
+- **Use `--output json` from CI scripts that need to parse the result.** Both `--bump-type` and `--raw` accept `--output json` for stable, machine-readable output. Avoid shell-substring matching on the human-readable output.
+- **Pin the major version (`@v5`) unless you want the release frozen.** The floating major tag follows the latest release in its range. If you want a frozen release, pin to a specific version (`@v5.2.2`).
+
+## Commits
+
+- **Use conventional commit messages** (`feat:`, `fix:`, `perf:`, `refactor:`, `docs:`, `chore:`, etc.). Grubble reads the commit history to compute the next version, and the commit type determines the bump (see [Configuration](configuration.md#commit-types) for the default mapping).
+- **Mark breaking changes with `!` or a `BREAKING CHANGE:` footer.** A `!` after the type/scope (e.g. `feat!: rewrite auth`) or a `BREAKING CHANGE: <description>` line in the commit body triggers a major bump. Anything else in `feat:` or `fix:` only triggers a minor or patch bump respectively.
+- **Do not edit a release PR after it has been opened.** Push additional fix: commits to `main` and let the workflow update the release PR by force-pushing the release branch. Editing the PR file directly via the GitHub UI creates a commit on the release branch that is not in the version.yml's commit analysis, leading to a mismatch.
+- **Squash-merge your PRs.** Grubble's commit analysis is per-commit, not per-PR. A `feat:` squashed into a `fix:` commit becomes a `fix:` commit and only triggers a patch bump. Use squash-merge (or rebase-merge) to keep individual commits in their conventional format.
+
+## Pinned versions
+
+- **For your own release workflow, use a specific tag rather than a branch.** Pin `davegarvey/grubble@v5.2.2` (not `@v5`) for stability. The major tag (`@v5`) is for end-user consumption where "latest patch" is the desired behavior.
+- **If you are publishing a binary that other projects depend on, use `--update-major-tag` and the major tag will be your public contract.** Treat moving the major tag as a breaking change: communicate it, version it, and give consumers time to migrate.
