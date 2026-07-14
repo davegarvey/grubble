@@ -310,7 +310,7 @@ Grubble's own release workflow (`.github/workflows/version.yml`) implements this
     # commit via the GitHub API.
 ```
 
-The grubble release subcommand is the small piece of binary logic the workflow calls to resolve a PR to a tag spec:
+The grubble `--release-from-pr` flag is the small piece of binary logic the workflow calls to resolve a PR to a tag spec:
 
 ```bash
 grubble --release-from-pr 79 --output json

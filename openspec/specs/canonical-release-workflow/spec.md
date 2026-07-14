@@ -1,10 +1,10 @@
 # canonical-release-workflow Specification
 
 ## Purpose
-TBD - created by archiving change canonical-semver-workflow. Update Purpose after archive.
+Defines the canonical release-please-style workflow for grubble's own repo: every push to `main` triggers a dry-run version computation. If a bump is needed, a release PR is opened on a `release/v<version>` branch. A human reviews and merges the PR. The next push to `main` detects the merged release PR and creates the tag + GitHub Release on the main merge commit via the GitHub API. This matches the `semantic-release` and `googleapis/release-please` patterns.
 ## Requirements
 ### Requirement: version.yml opens a release PR on every push that warrants a bump
-The `version.yml` workflow SHALL run on every push to `main`. When the Bump step detects a conventional commit since the last release that warrants a version bump, the workflow SHALL open (or update) a release PR. The release PR's head branch SHALL be named `release/v<new_version>` and SHALL contain a single commit with the version bump (Cargo.toml, CHANGELOG.md) and the corresponding git tag.
+The `version.yml` workflow SHALL run on every push to `main`. When the Bump step detects a conventional commit since the last release that warrants a version bump, the workflow SHALL open (or update) a release PR. The release PR's head branch SHALL be named `release/v<new_version>` and SHALL contain a single commit with the version bump (Cargo.toml, CHANGELOG.md). The git tag SHALL NOT be created on the release branch — the tag is created on the main merge commit after the PR is merged (see "workflow tags the merge commit" requirement below).
 
 #### Scenario: a feat commit triggers a new release PR
 - **WHEN** a push to `main` contains one or more `feat:` or `feat!:` commits since the last release
