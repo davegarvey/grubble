@@ -80,27 +80,34 @@ inputs:
     required: false
     default: 'false'
   auto-merge:
-    description: 'Enable auto-merge with squash on the created PR. Requires `create-pr` to be set. The PR will merge when branch protection requirements (status checks, reviews) pass.'
+    description: 'Enable auto-merge with squash on the created PR. Requires `create-pr` to be set. The PR will merge when branch protection requirements (status checks, reviews) pass. WARNING: GitHub does not allow a bot-created PR to approve itself, so if your branch requires review approval the PR will sit in `Waiting for approval` indefinitely. Prefer the release-please flow (no `auto-merge`; a human merges the release PR) when reviews are required — see the README.'
     required: false
     default: 'false'
   token:
     description: 'Optional: a GitHub token (PAT or GitHub App installation token) to use for git push authentication. Only needed if you must bypass branch protection. When set, the remote URL is rewritten with the token before grubble runs. Prefer the `branch` + `create-pr` flow instead.'
     required: false
     default: ''
+  release-from-pr:
+    description: 'Run `grubble --release-from-pr <NUMBER>` instead of the bump. When set, the bump-related steps are skipped and the resolved tag spec is emitted as the `release-spec` output. Use this in a post-merge workflow step after a release PR has been merged. Requires `GH_TOKEN` or `GITHUB_TOKEN` in the env. The Action is read-only in this mode (no commits, tags, or pushes).'
+    required: false
+    default: ''
 
 outputs:
   version:
-    description: 'The new version number'
+    description: 'The new version number (empty in `release-from-pr` mode)'
     value: ${{ steps.bump.outputs.version }}
   previous-version:
-    description: 'The previous version number'
+    description: 'The previous version number (empty in `release-from-pr` mode)'
     value: ${{ steps.bump.outputs.previous_version }}
   bump-type:
-    description: 'The type of version bump (major, minor, patch, none)'
+    description: 'The type of version bump (major, minor, patch, none; empty in `release-from-pr` mode)'
     value: ${{ steps.bump.outputs.bump_type }}
   branch:
-    description: 'The branch that was pushed to (auto-generated or user-specified)'
+    description: 'The branch that was pushed to (auto-generated or user-specified; empty in `release-from-pr` mode)'
     value: ${{ steps.bump.outputs.branch }}
+  release-spec:
+    description: 'JSON tag spec from `grubble --release-from-pr`. Contains `version`, `tag_name`, `major_tag_name`, `merge_commit_sha`, `title`, and `body`. Empty when `release-from-pr` is not set.'
+    value: ${{ steps.resolve_release.outputs.spec }}
 
 runs:
   using: 'composite'
@@ -249,6 +256,7 @@ runs:
         echo "✓ Remote URL updated with custom token"
 
     - name: Get current version
+      if: inputs.release-from-pr == ''
       id: current
       shell: bash
       run: |
@@ -265,6 +273,7 @@ runs:
         echo "previous_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
     - name: Run bump
+      if: inputs.release-from-pr == ''
       id: bump
       shell: bash
       run: |
@@ -436,7 +445,7 @@ runs:
         fi
 
     - name: Push release branch
-      if: steps.bump.outputs.bump_type != 'none' && inputs.create-pr == 'true' && inputs.branch == '' && steps.bump.outputs.branch != ''
+      if: inputs.release-from-pr == '' && steps.bump.outputs.bump_type != 'none' && inputs.create-pr == 'true' && inputs.branch == '' && steps.bump.outputs.branch != ''
       shell: bash
       run: |
         BRANCH="${{ steps.bump.outputs.branch }}"
@@ -446,7 +455,7 @@ runs:
 
     - name: Create release PR
       id: pr
-      if: inputs.create-pr == 'true' && steps.bump.outputs.bump_type != 'none'
+      if: inputs.release-from-pr == '' && inputs.create-pr == 'true' && steps.bump.outputs.bump_type != 'none'
       env:
         GH_TOKEN: ${{ github.token }}
       shell: bash
@@ -471,9 +480,35 @@ runs:
         echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
 
     - name: Enable auto-merge
-      if: inputs.auto-merge == 'true' && inputs.create-pr == 'true' && steps.bump.outputs.bump_type != 'none'
+      if: inputs.release-from-pr == '' && inputs.auto-merge == 'true' && inputs.create-pr == 'true' && steps.bump.outputs.bump_type != 'none'
       shell: bash
       run: |
         if [ -n "${{ steps.pr.outputs.pr_url }}" ]; then
           gh pr merge "${{ steps.pr.outputs.pr_url }}" --auto --squash
         fi
+
+    - name: Resolve release from PR
+      if: inputs.release-from-pr != ''
+      id: resolve_release
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_TOKEN: ${{ github.token }}
+      shell: bash
+      run: |
+        # Read-only resolution: query the GitHub API for the PR, validate the
+        # head branch matches ^release/v\d+\.\d+\.\d+$ and the PR is merged,
+        # and emit the tag spec as a JSON output. No commits, tags, or pushes.
+        if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
+          SPEC=$(./grubble.exe --release-from-pr "${{ inputs.release-from-pr }}" --output json)
+        else
+          SPEC=$(./grubble --release-from-pr "${{ inputs.release-from-pr }}" --output json)
+        fi
+        echo "$SPEC"
+
+        # Emit the spec as a multi-line output. The trailing newline on
+        # `spec<<EOF` is required by GitHub's output format spec.
+        {
+          echo "spec<<EOF"
+          echo "$SPEC"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"

@@ -35,7 +35,7 @@ grubble --dry-run
 grubble --push --tag
 ```
 
-For CI, jump to [GitHub Actions](#github-actions).
+For CI on a protected branch, jump to [Releasing on a Git Server](#releasing-on-a-git-server-recommended-release-please-flow).
 
 ## Installation
 
@@ -145,7 +145,7 @@ Grubble reads `.versionrc.json` from the project root. Flags and file values are
 | `updateMajorTag` | `--update-major-tag` | `false` | Maintain a floating `v4` tag pointing to the latest `v4.x.x`. |
 | `updateMinorTag` | `--update-minor-tag` | `false` | Maintain a floating `v4.1` tag pointing to the latest `v4.1.x`. |
 | `gitUserName` | `--git-user-name` | `github-actions[bot]` | Identity used for the bump commit when no local git user is configured. |
-| — | `--git-branch` | `""` | Push the bump to this branch instead of HEAD. See [Releasing on Protected Branches](#releasing-on-protected-branches). |
+| — | `--git-branch` | `""` | Push the bump to this branch instead of HEAD. See [Releasing on a Git Server](#releasing-on-a-git-server-recommended-release-please-flow). |
 | `gitUserEmail` | `--git-user-email` | `41898282+github-actions[bot]@users.noreply.github.com` | Email used for the bump commit when no local git user is configured. |
 | `types` | — | see [Commit Types](#commit-types) | Per-type bump behavior. Valid values: `major`, `minor`, `patch`, `none`. |
 
@@ -189,9 +189,154 @@ These tags are force-pushed. Anyone who has them checked out locally will need t
 
 The changelog is committed as part of the release.
 
-## GitHub Actions
+## Releasing on a Git Server (Recommended: release-please flow)
 
-The Action downloads a pre-built binary, runs the bump, and exposes the new version as outputs. It is the simplest way to wire grubble into your release flow.
+Grubble's recommended release flow is the same one used by [`semantic-release`](https://github.com/semantic-release/semantic-release) (23.9k ⭐) and [`googleapis/release-please`](https://github.com/googleapis/release-please) (7.2k ⭐, Google-maintained): open a release PR, let a human merge it, then create the tag on the merge commit. This pattern works on **any** git server (GitHub, GitLab, Gitea, etc.) — the only thing that varies is the API you call to create the PR, the tag, and the release. The grubble binary itself is server-agnostic; only the workflow glue changes.
+
+### Why this pattern
+
+- **Tag is on the main commit, by construction.** No orphaning risk — there is no `release/v<version>`-branch tip that a squash merge could detach the tag from.
+- **Human-in-the-loop.** A release is a high-impact event; a maintainer reviews the PR before it merges.
+- **Survives squash vs. merge commit.** Both styles produce a single, stable commit on main that the tag can point to.
+- **Works on protected branches without a bypass token.** The only push is to a `release/v<version>` branch, which you can configure to be un-protected (the release PR is the review gate, not the branch).
+- **Bot-approval-friendly.** GitHub will not let a bot-created PR approve itself for merge. With a human in the loop, this is a non-issue; with `auto-merge: true` on a bot-created PR it is a hard stop (see [Troubleshooting](#troubleshooting)).
+
+### The flow
+
+1. A conventional commit (e.g. `feat:`, `fix:`) lands on `main`.
+2. Your release workflow runs `grubble --dry-run` to compute the next version. If it would change, the workflow opens (or updates) a release PR on a `release/v<version>` branch. The PR contains the version bump commit and the CHANGELOG entry. **No auto-merge.**
+3. A maintainer reviews the release PR and merges it (squash or merge commit — both work).
+4. On the next push to `main`, the workflow detects the merged release PR and creates the `v<version>` tag and a GitHub Release on the merge commit. The `v<major>` floating tag is also updated.
+
+### `--release-from-pr`: the missing piece
+
+The new piece in this flow is the post-merge tag step. You need a way to: (1) take a PR number, (2) confirm it was merged, (3) read the version from the head branch, and (4) get the merge commit SHA. That is exactly what `grubble --release-from-pr <NUMBER>` does:
+
+```bash
+$ grubble --release-from-pr 79 --output json
+{
+  "body": "Automated release PR created by grubble.",
+  "major_tag_name": "v5",
+  "merge_commit_sha": "582643110c4fa6e5279f9f6705fbbc1bf1e52143",
+  "tag_name": "v5.2.2",
+  "title": "Release v5.2.2",
+  "version": "5.2.2"
+}
+```
+
+`--release-from-pr` is a **read-only** operation: it queries the GitHub API for the PR, validates the head branch matches `^release/v\d+\.\d+\.\d+$`, validates the PR is merged, and emits the spec. It does NOT create tags, releases, or anything else. The split keeps grubble's job small (resolve the PR) and your workflow's job explicit (decide what to do with the resolved spec — cut the tag, write a release, post to Slack, etc.).
+
+It is mutually exclusive with the bump modes (`--push`, `--tag`, `--changelog`, etc.) because it is a read-only resolution, not a state-changing bump.
+
+### GitHub Actions: release-please flow with the grubble Action
+
+The grubble Action supports this flow via two inputs that work together: `create-pr: true` (with no `auto-merge`) opens the release PR, and `release-from-pr: <NUMBER>` resolves a merged release PR to a tag spec. The two are used in different invocations of the Action — the bump and the post-merge resolution are different shapes, so they don't compose in a single `uses:` step.
+
+```yaml
+name: Version & Release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 1. Open or update the release PR. Bump + push the release branch
+      #    (no --tag) and open the PR. No auto-merge — a human reviews.
+      - uses: davegarvey/grubble@v5
+        with:
+          push: true
+          create-pr: true
+
+      # 2. Detect a merged release PR.
+      - name: Detect merged release PR
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_INFO=$(gh pr list --state merged --base main --limit 20 \
+            --json number,headRefName,mergeCommit,mergedAt \
+            | jq -r '[.[] | select(.headRefName | test("^release/v[0-9]+\\.[0-9]+\\.[0-9]+$"))] | sort_by(.mergedAt) | last // empty')
+          if [ -n "$PR_INFO" ] && [ "$PR_INFO" != "null" ]; then
+            PR_NUMBER=$(echo "$PR_INFO" | jq -r '.number')
+            MERGE_SHA=$(echo "$PR_INFO" | jq -r '.mergeCommit.oid')
+            echo "merged=true" >> $GITHUB_OUTPUT
+            echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+            echo "merge_sha=$MERGE_SHA" >> $GITHUB_OUTPUT
+          else
+            echo "merged=false" >> $GITHUB_OUTPUT
+          fi
+
+      # 3. Resolve the merged PR to a tag spec via the grubble Action.
+      #    The Action's `release-from-pr` input runs `grubble --release-from-pr`
+      #    in read-only mode and emits the spec as `release-spec`.
+      - name: Resolve release spec
+        id: resolve
+        if: steps.detect.outputs.merged == 'true'
+        uses: davegarvey/grubble@v5
+        with:
+          release-from-pr: ${{ steps.detect.outputs.pr_number }}
+
+      # 4. Cut the tag + GitHub Release on the merge commit.
+      - name: Release merged PR
+        if: steps.detect.outputs.merged == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Use fromJSON() to safely parse the multi-line JSON spec from
+          # the Action's output. Shell-quoting JSON directly is fragile when
+          # the PR body contains apostrophes or other shell-special chars.
+          TAG='${{ fromJSON(steps.resolve.outputs.release-spec).tag_name }}'
+          MAJOR='${{ fromJSON(steps.resolve.outputs.release-spec).major_tag_name }}'
+          SHA='${{ fromJSON(steps.resolve.outputs.release-spec).merge_commit_sha }}'
+          BODY='${{ fromJSON(steps.resolve.outputs.release-spec).body }}'
+
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "::error::Failed to resolve release for PR"
+            exit 1
+          fi
+
+          # Tag (idempotent: skip if it already exists on this commit).
+          if ! gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}" >/dev/null 2>&1; then
+            gh api -X POST -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f "ref=refs/tags/${TAG}" -f "sha=${SHA}"
+          fi
+
+          # Floating major tag (always force).
+          gh api -X PATCH -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/git/refs/tags/${MAJOR}" \
+            -f "sha=${SHA}" -F "force=true" >/dev/null
+
+          # GitHub Release (idempotent: skip if it exists).
+          if ! gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release create "${TAG}" --target "${SHA}" \
+              --title "${TAG}" --notes "${BODY}" --verify-latest
+          fi
+```
+
+That is the whole thing. The Action's `create-pr` input (no `auto-merge`) opens the release PR; a human merges it; the next push to `main` runs the Action's `release-from-pr` mode to resolve the spec, and the `Release merged PR` step cuts the tag and creates the GitHub Release on the merge commit.
+
+### Reference implementation: grubble's own version.yml
+
+The repo's own release workflow (`.github/workflows/version.yml`) is the canonical example. It runs the Bump step (`grubble --raw --dry-run`) to compute the next version, opens or updates the release PR (no auto-merge), and on the next push after merge runs `--release-from-pr` to resolve the merged PR and create the tag + GitHub Release on the merge commit via `gh api`. v5.2.0, v5.2.1, and v5.2.2 were all released through this flow.
+
+## Direct-Push Style (Alternative)
+
+If your `main` is **not** protected, or you have configured your repo to allow `GITHUB_TOKEN` to bypass branch protection, the simplest possible flow is direct-push: a workflow that triggers on every push to `main`, runs `grubble --push --tag`, and ships. This is the same pattern grubble shipped in v4 and earlier — it still works, but we recommend the release-please flow above for any new project because it gives you a human review gate, an audit trail, and works on protected branches.
+
+> Skip this section if your `main` is protected with required reviews and you want them enforced. The release-please flow above is the right tool for that.
+
+### GitHub Action: direct-push
 
 ```yaml
 name: Release
@@ -211,16 +356,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: davegarvey/grubble@v4
+      - uses: davegarvey/grubble@v5
         with:
           push: true
           tag: true
           update-major-tag: true
 ```
 
-The `davegarvey/grubble@v4` pin floats to the latest v4.x.x release. Pin to a specific tag (e.g. `@v4.9.4`) if you need the release frozen.
+The `davegarvey/grubble@v5` pin floats to the latest v5.x.x release. Pin to a specific tag (e.g. `@v5.2.2`) if you need the release frozen.
 
-### Manual setup
+### Manual setup (direct-push)
 
 Use this when you want to run tests and linting before the bump, or when self-hosted runners can't reach GitHub Releases.
 
@@ -262,86 +407,12 @@ CI checklist:
 
 - Grant `contents: write` so the workflow can push commits and tags.
 - Use `fetch-depth: 0` on `actions/checkout` so grubble can see the full history.
-- Pin the major version (`@v4`) unless you want the release frozen.
+- Pin the major version (`@v5`) unless you want the release frozen.
 - Use the GitHub Action unless you need custom logic between the lint and the bump.
 
-## Releasing on Protected Branches
+## Bypass Token (Advanced)
 
-If your `main` branch is protected (required PRs, required status checks), the default `push: true` will fail with `GH006: Protected branch update failed` because `GITHUB_TOKEN` cannot bypass branch protection.
-
-The recommended pattern is the canonical **release-please** flow: open a release PR, let a human merge it, then create the tag on the merge commit. This is the same pattern used by [`semantic-release`](https://github.com/semantic-release/semantic-release) (23.9k ⭐) and [`release-please`](https://github.com/googleapis/release-please) (7.2k ⭐, Google-maintained). The key properties:
-
-- **Tag is on the main commit, by construction.** No orphaning risk.
-- **Human-in-the-loop.** A release is a high-impact event; a maintainer reviews the PR before it merges.
-- **No auto-merge quirks.** GitHub's auto-merge bot pushes don't always trigger downstream workflows, and bot-created PRs need CI approval. With the human in the loop, this is a non-issue.
-
-### The flow
-
-1. A conventional commit (e.g. `feat:`, `fix:`) lands on `main`.
-2. Your release workflow runs `grubble --dry-run` to compute the next version. If it would change, the workflow opens (or updates) a release PR on a `release/v<version>` branch. The PR contains the version bump commit and the CHANGELOG entry. **No auto-merge.**
-3. A maintainer reviews the release PR and merges it (squash or merge commit — both work).
-4. On the next push to `main`, the workflow detects the merged release PR and creates the `v<version>` tag and a GitHub Release on the merge commit via the GitHub API. The `v<major>` floating tag is also updated.
-
-### Reference implementation
-
-Grubble's own release workflow (`.github/workflows/version.yml`) implements this pattern. The shape:
-
-```yaml
-- name: Bump (dry-run)
-  id: bump
-  run: |
-    VERSION_BEFORE=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-    VERSION_AFTER=$(./grubble --preset rust --dry-run)
-    # ...compare and emit outputs...
-
-- name: Open or update release PR
-  if: steps.bump.outputs.changed == 'true' && steps.detect.outputs.merged != 'true'
-  run: |
-    # Bump Cargo.toml + CHANGELOG.md, push the release branch, open the PR.
-    # NO --tag here — the tag is created on the main merge commit by the
-    # "Release merged PR" step.
-
-- name: Release merged PR
-  id: release
-  if: steps.detect.outputs.merged == 'true'
-  run: |
-    # Resolve the merged PR to a tag spec via `grubble --release-from-pr`,
-    # then create the v<version> tag and GitHub Release on the merge
-    # commit via the GitHub API.
-```
-
-The grubble `--release-from-pr` flag is the small piece of binary logic the workflow calls to resolve a PR to a tag spec:
-
-```bash
-grubble --release-from-pr 79 --output json
-# {
-#   "body": "Automated release PR created by grubble.",
-#   "major_tag_name": "v5",
-#   "merge_commit_sha": "5826431...",
-#   "tag_name": "v5.2.2",
-#   "title": "Release v5.2.2",
-#   "version": "5.2.2"
-# }
-```
-
-### Direct-push style (for unprotected branches)
-
-If your `main` is not protected, the simplest approach is `grubble --push --tag` from CI on every push to `main`. The CLI flags unchanged from earlier versions:
-
-```yaml
-- name: Bump and push
-  run: |
-    grubble --push --tag --update-major-tag \
-      --preset rust \
-      --git-user-name "github-actions[bot]" \
-      --git-user-email "41898282+github-actions[bot]@users.noreply.github.com"
-```
-
-This is the simplest possible flow. Use it when your default branch is not protected, or when you've already set up branch protection to allow the GITHUB_TOKEN to bypass (see below).
-
-### Bypass token (advanced)
-
-If you cannot use the PR flow and must push directly to a protected branch, supply a custom token via the Action's `token` input:
+If you cannot use the PR flow and must push directly to a protected branch (for example, to make an existing direct-push workflow work after enabling branch protection), supply a custom token via the Action's `token` input:
 
 ```yaml
 - uses: davegarvey/grubble@v5
@@ -352,7 +423,7 @@ If you cannot use the PR flow and must push directly to a protected branch, supp
 
 The Action masks the token in logs and rewrites the remote URL with it before grubble runs. The token must have push access and bypass privileges for the protected branch — typically a GitHub App installation token or a fine-grained PAT with `contents: write`.
 
-Prefer the release-please-style PR flow whenever possible. Bypassing branch protection skips required reviews and status checks, which undermines the protections you set up.
+**Prefer the release-please flow whenever possible.** Bypassing branch protection skips required reviews and status checks, which undermines the protections you set up. The bypass token should be a last resort, not a default.
 
 ## CI/CD Patterns
 
@@ -480,7 +551,11 @@ Empty or invalid `.versionrc.json` falls back to defaults with a warning. Run gr
 
 **Push fails on protected branches (`GH006`)**
 
-`GITHUB_TOKEN` cannot bypass branch protection. Use the [PR flow](#releasing-on-protected-branches) (`branch` + `create-pr`), or supply a [bypass token](#bypass-token-advanced) if you must push directly.
+`GITHUB_TOKEN` cannot bypass branch protection. Use the [release-please flow](#releasing-on-a-git-server-recommended-release-please-flow) (`branch` + `create-pr`, no `auto-merge`), or supply a [bypass token](#bypass-token-advanced) if you must push directly.
+
+**Auto-merge PR is stuck in "Waiting for approval"**
+
+GitHub does not allow a bot-created PR to approve itself. If your branch protection rule requires review approval, a PR opened by `create-pr: true` (which uses `GITHUB_TOKEN`) cannot satisfy the approval check and `auto-merge: true` will never trigger. The fix is to remove `auto-merge` and have a human click "Merge" on the release PR — i.e. use the [release-please flow](#releasing-on-a-git-server-recommended-release-please-flow). This is the same reason grubble's own `version.yml` workflow intentionally does **not** call `gh pr merge --auto`.
 
 **"Invalid format" in `$GITHUB_OUTPUT`**
 
@@ -488,15 +563,27 @@ Fixed in v4.9.4 (see [#54](https://github.com/davegarvey/grubble/issues/54)). Bu
 
 ## Migration from v4
 
-v5.0.0 is a breaking release for the CLI's exit-code contract. The GitHub Action and `version.yml` workflow are unchanged in behavior; the v5 contract is what they always wanted.
+### v5.0.0 — CLI contract change
 
-### What changed
+v5.0.0 is a breaking release for the CLI's exit-code contract. The GitHub Action and `version.yml` workflow are unchanged in behavior at the v5.0 boundary; the v5 contract is what they always wanted.
+
+**What changed in v5.0.0:**
 
 - **`grubble` exits 0 on success**, including when no bump is needed. Previously, exit 1 meant "no bump" — now exit 1 means "error."
 - **`grubble --raw` honors `--preset`**. `--raw --preset rust` reads from `Cargo.toml`; `--raw --preset node` reads from `package.json`; `--raw --preset git` reads from the latest tag. Previously, `--raw` always read from git tags regardless of preset.
 - **New `--output text|json` flag** for `--bump-type` and `--raw`. Use this from CI scripts that need to parse the result.
 - **Action requires release checksums** (was warn-and-continue on missing `.sha256`).
 - The Action's "Get current version" step now uses a single `./grubble --raw --preset <preset>` call instead of preset-specific shell branches.
+
+### v5.2.0 — release workflow restructured (recommended reading)
+
+v5.2.0 switched the canonical `version.yml` workflow to the release-please flow. If you copied grubble's `version.yml` into your own repo and now need to understand what changed, or if you want to migrate from a pre-merge-tag setup, read [Releasing on a Git Server](#releasing-on-a-git-server-recommended-release-please-flow) — that section is the recommended pattern for any repo on a protected branch.
+
+**The key behavioral change:** tags are no longer created on the release branch commit. They are created on the **main merge commit** after a human merges the release PR. This eliminates tag-orphaning on squash merges and means the tag is on a single, stable commit by construction.
+
+**New CLI flag:** `grubble --release-from-pr <NUMBER>` resolves a merged release PR to a tag spec (`version`, `tag_name`, `major_tag_name`, `merge_commit_sha`, `title`, `body`). It is the read-only resolution step your post-merge workflow calls before creating the tag and GitHub Release via `gh api`. It is mutually exclusive with the bump modes (it does not modify any state).
+
+**New Action input:** `release-from-pr: <NUMBER>` on the grubble Action runs the same flag and emits the spec as the `release-spec` output. Use it in a post-merge step when you want the Action to do the resolution for you (see the reference workflow in [Releasing on a Git Server](#releasing-on-a-git-server-recommended-release-please-flow)).
 
 ### If you script against the CLI
 
