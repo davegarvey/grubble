@@ -446,6 +446,80 @@ CI checklist:
 
 ## Bypass Token (Advanced)
 
+If your `main` branch is protected (required PRs, required status checks), the default `push: true` will fail with `GH006: Protected branch update failed` because `GITHUB_TOKEN` cannot bypass branch protection.
+
+The recommended pattern is the canonical **release-please** flow: open a release PR, let a human merge it, then create the tag on the merge commit. This is the same pattern used by [`semantic-release`](https://github.com/semantic-release/semantic-release) (23.9k ⭐) and [`release-please`](https://github.com/googleapis/release-please) (7.2k ⭐, Google-maintained). The key properties:
+
+- **Tag is on the main commit, by construction.** No orphaning risk.
+- **Human-in-the-loop.** A release is a high-impact event; a maintainer reviews the PR before it merges.
+- **No auto-merge quirks.** GitHub's auto-merge bot pushes don't always trigger downstream workflows, and bot-created PRs need CI approval. With the human in the loop, this is a non-issue.
+
+### The flow
+
+1. A conventional commit (e.g. `feat:`, `fix:`) lands on `main`.
+2. Your release workflow runs `grubble --dry-run` to compute the next version. If it would change, the workflow opens (or updates) a release PR on a `release/v<version>` branch. The PR contains the version bump commit and the CHANGELOG entry. **No auto-merge.**
+3. A maintainer reviews the release PR and merges it (squash or merge commit — both work).
+4. On the next push to `main`, the workflow detects the merged release PR and creates the `v<version>` tag and a GitHub Release on the merge commit via the GitHub API. The `v<major>` floating tag is also updated.
+
+### Reference implementation
+
+Grubble's own release workflow (`.github/workflows/version.yml`) implements this pattern. The shape:
+
+```yaml
+- name: Bump (dry-run)
+  id: bump
+  run: |
+    VERSION_BEFORE=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+    VERSION_AFTER=$(./grubble --preset rust --dry-run)
+    # ...compare and emit outputs...
+
+- name: Open or update release PR
+  if: steps.bump.outputs.changed == 'true' && steps.detect.outputs.merged != 'true'
+  run: |
+    # Bump Cargo.toml + CHANGELOG.md, push the release branch, open the PR.
+    # NO --tag here — the tag is created on the main merge commit by the
+    # "Release merged PR" step.
+
+- name: Release merged PR
+  id: release
+  if: steps.detect.outputs.merged == 'true'
+  run: |
+    # Resolve the merged PR to a tag spec via `grubble --release-from-pr`,
+    # then create the v<version> tag and GitHub Release on the merge
+    # commit via the GitHub API.
+```
+
+The grubble `--release-from-pr` flag is the small piece of binary logic the workflow calls to resolve a PR to a tag spec:
+
+```bash
+grubble --release-from-pr 79 --output json
+# {
+#   "body": "Automated release PR created by grubble.",
+#   "major_tag_name": "v5",
+#   "merge_commit_sha": "5826431...",
+#   "tag_name": "v5.2.2",
+#   "title": "Release v5.2.2",
+#   "version": "5.2.2"
+# }
+```
+
+### Direct-push style (for unprotected branches)
+
+If your `main` is not protected, the simplest approach is `grubble --push --tag` from CI on every push to `main`. The CLI flags unchanged from earlier versions:
+
+```yaml
+- name: Bump and push
+  run: |
+    grubble --push --tag --update-major-tag \
+      --preset rust \
+      --git-user-name "github-actions[bot]" \
+      --git-user-email "41898282+github-actions[bot]@users.noreply.github.com"
+```
+
+This is the simplest possible flow. Use it when your default branch is not protected, or when you've already set up branch protection to allow the GITHUB_TOKEN to bypass (see below).
+
+### Bypass token (advanced)
+
 If you cannot use the PR flow and must push directly to a protected branch (for example, to make an existing direct-push workflow work after enabling branch protection), supply a custom token via the Action's `token` input:
 
 ```yaml
