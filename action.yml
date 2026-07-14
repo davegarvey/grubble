@@ -298,14 +298,11 @@ runs:
           exit 0
         fi
 
-        # When create-pr is set without an explicit branch, we auto-generate
-        # the branch name from the new version. The binary commits locally
-        # (no --push), then the action creates the branch and pushes it.
-        PUSHING_TO_BRANCH=false
+        # When create-pr is set without an explicit branch, the binary commits
+        # locally (no --push), then the "Push release branch" step creates the
+        # branch and pushes it.
         if [ "${{ inputs.push }}" = "true" ]; then
-          if [ "${{ inputs.create-pr }}" = "true" ] && [ -z "${{ inputs.branch }}" ]; then
-            PUSHING_TO_BRANCH=true
-          else
+          if [ "${{ inputs.create-pr }}" != "true" ] || [ -n "${{ inputs.branch }}" ]; then
             ARGS="$ARGS --push"
           fi
         fi
@@ -428,9 +425,30 @@ runs:
 
         echo "previous_version=$PREV" >> $GITHUB_OUTPUT
 
+        # Branch output: explicit input > auto-generated release/v<NEW_VERSION> when create-pr is on
+        # and a bump happened > empty. The "Push release branch" and "Create release PR" steps read this.
+        if [ -n "${{ inputs.branch }}" ]; then
+          echo "branch=${{ inputs.branch }}" >> $GITHUB_OUTPUT
+        elif [ "${{ inputs.create-pr }}" = "true" ] && [ "$NEW_VERSION" != "$PREV" ]; then
+          echo "branch=release/v${NEW_VERSION}" >> $GITHUB_OUTPUT
+        else
+          echo "branch=" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Push release branch
+      if: steps.bump.outputs.bump_type != 'none' && inputs.create-pr == 'true' && inputs.branch == '' && steps.bump.outputs.branch != ''
+      shell: bash
+      run: |
+        BRANCH="${{ steps.bump.outputs.branch }}"
+        git checkout -B "${BRANCH}"
+        git push --set-upstream origin "${BRANCH}" --force
+        git push --tags --force
+
     - name: Create release PR
       id: pr
       if: inputs.create-pr == 'true' && steps.bump.outputs.bump_type != 'none'
+      env:
+        GH_TOKEN: ${{ github.token }}
       shell: bash
       run: |
         VERSION="${{ steps.bump.outputs.version }}"
@@ -458,17 +476,4 @@ runs:
       run: |
         if [ -n "${{ steps.pr.outputs.pr_url }}" ]; then
           gh pr merge "${{ steps.pr.outputs.pr_url }}" --auto --squash
-        fi
-
-        # Auto-generated branch: create branch from the local commit and push it.
-        if [ "$PUSHING_TO_BRANCH" = "true" ] && [ "$NEW_VERSION" != "$PREV" ]; then
-          BRANCH="release/v${NEW_VERSION}"
-          git checkout -b "${BRANCH}"
-          git push --set-upstream origin "${BRANCH}" 2>&1
-          git push --tags --force 2>&1
-          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
-        fi
-
-        if [ -n "${{ inputs.branch }}" ]; then
-          echo "branch=${{ inputs.branch }}" >> $GITHUB_OUTPUT
         fi
