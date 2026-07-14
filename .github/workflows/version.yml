@@ -260,6 +260,11 @@ jobs:
         VERSION="${{ steps.bump.outputs.version }}"
         BRANCH="release/v${VERSION}"
 
+        # Fetch tags created by the Release step (above). Without this,
+        # grubble would see the old tag and refuse to bump with "file
+        # ahead of tag" since Cargo.toml was updated by the merged PR.
+        git fetch origin --tags --force
+
         # Run grubble on the release branch: bumps Cargo.toml, updates
         # CHANGELOG.md. NO --tag here — the tag is created on the main
         # merge commit by the "Release merged PR" step after a human merges
