@@ -134,6 +134,11 @@ struct Args {
     /// and PR body. Requires `GH_TOKEN` or `GITHUB_TOKEN` in the env.
     #[arg(long, value_name = "PR_NUMBER", conflicts_with_all = ["bump_type", "raw", "dry_run"])]
     release_from_pr: Option<u32>,
+
+    /// Read the latest entry from CHANGELOG.md and print it to stdout.
+    /// Pure read-only operation — no files are modified.
+    #[arg(long)]
+    changelog_entry: bool,
 }
 
 fn log(msg: &str, is_raw: bool) {
@@ -182,6 +187,15 @@ fn run() -> BumperResult<ExitCode> {
     // Handle --bump-type mode
     if is_bump_type {
         run_bump_type(&args, output)?;
+        return Ok(ExitCode::Ok);
+    }
+
+    // Handle --changelog-entry mode: read-only, no side effects
+    if args.changelog_entry {
+        let entry = changelog::read_latest_changelog_entry()?;
+        if !entry.is_empty() {
+            println!("{}", entry);
+        }
         return Ok(ExitCode::Ok);
     }
 
