@@ -171,6 +171,10 @@ jobs:
         # With GITHUB_TOKEN, events triggered by the token do not create
         # new workflow runs (by GitHub's design), leaving the required
         # CI check permanently unsatisfied and the PR unmergeable.
+        # Must also clear the extraheader that actions/checkout sets,
+        # otherwise git uses the GITHUB_TOKEN from the header instead
+        # of the URL-embedded PAT.
+        git config --unset-all http.https://github.com/.extraheader || true
         git remote set-url origin \
           "https://x-access-token:${{ secrets.RELEASE_PAT }}@github.com/${{ github.repository }}"
 
