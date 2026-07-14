@@ -30,7 +30,10 @@ fn run_git_command(args: &[&str]) -> BumperResult<String> {
 }
 
 pub fn get_last_tag() -> BumperResult<Option<String>> {
-    match run_git_command(&["describe", "--tags", "--abbrev=0"]) {
+    // Only match full semver tags (vX.Y.Z), excluding floating major/minor
+    // tags (v5, v4.1) that GitHub Actions uses for version references.
+    let pattern = "v[0-9]*.[0-9]*.[0-9]*";
+    match run_git_command(&["describe", "--tags", "--abbrev=0", "--match", pattern]) {
         Ok(tag) if !tag.is_empty() => Ok(Some(tag)),
         Ok(_) => Ok(None),
         Err(_) => Ok(None), // No tags exist yet
