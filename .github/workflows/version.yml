@@ -250,13 +250,14 @@ jobs:
         # force — the v<major> tag moves forward on every release.
         if gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${MAJOR_TAG}" >/dev/null 2>&1; then
           echo "Updating floating tag ${MAJOR_TAG} to ${MERGE_SHA}"
+          # -F (capital) sends "force=true" as a JSON boolean, -f (lower)
+          # sends it as a string which the API rejects with 422.
           gh api \
             --method PATCH \
             -H "Accept: application/vnd.github+json" \
             "repos/${GITHUB_REPOSITORY}/git/refs/tags/${MAJOR_TAG}" \
-            --input - <<EOF >/dev/null
-{"sha":"${MERGE_SHA}","force":true}
-EOF
+            -f "sha=${MERGE_SHA}" \
+            -F "force=true" >/dev/null
         else
           echo "Creating floating tag ${MAJOR_TAG} on ${MERGE_SHA}"
           gh api \
