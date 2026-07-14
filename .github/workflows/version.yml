@@ -105,9 +105,11 @@ jobs:
       if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_version_bump != 'true'
       run: |
         VERSION_BEFORE=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-        # --dry-run computes the next version without modifying files,
-        # committing, or tagging. It exits 0 in all non-error cases.
-        VERSION_AFTER=$(./target/release/grubble --preset rust --dry-run)
+        # --raw --dry-run prints just the next version (no extra lines)
+        # and exits 0 in all non-error cases. The "current" version is
+        # already in Cargo.toml; the "next" version is what would be set
+        # if a release happened. If they differ, a release is needed.
+        VERSION_AFTER=$(./target/release/grubble --preset rust --raw --dry-run)
         if [ -z "$VERSION_AFTER" ]; then
           VERSION_AFTER="$VERSION_BEFORE"
         fi
