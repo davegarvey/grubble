@@ -146,7 +146,21 @@ jobs:
         fi
 
     - name: Open or update release PR
-      if: steps.bump.outputs.changed == 'true' && steps.detect.outputs.merged != 'true'
+      # The Open and Release steps are independent. The Open step runs
+      # whenever a new release is needed (Bump step detected warrants a
+      # change), regardless of whether a previous release PR is still
+      # being processed by the Release step. They do not race — the
+      # workflow steps are sequential, and the Release step's `gh api`
+      # calls are independent of the Open step's branch + PR creation.
+      #
+      # This is what makes the workflow correct after a "quiet period":
+      # if v5.2.2 was released long ago and a new fix: lands on main,
+      # the Bump step computes v5.2.3 (changed=true), the Detect step
+      # still finds the old v5.2.2 release PR (merged=true), and the
+      # Open step opens a fresh release PR for v5.2.3. Without the
+      # decoupling here, the workflow would silently skip the new
+      # release PR — which is the bug this fix addresses.
+      if: steps.bump.outputs.changed == 'true'
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
