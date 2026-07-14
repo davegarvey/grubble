@@ -116,9 +116,16 @@ struct Args {
     #[arg(long)]
     dry_run: bool,
 
-    /// Output format. Only valid with --bump-type or --raw.
+    /// Output format. Only valid with --bump-type, --raw, or --release-from-pr.
     #[arg(long, value_enum, default_value_t = Output::Text)]
     output: Output,
+
+    /// Resolve a merged release PR to a tag spec for post-merge release
+    /// automation. Given a PR number, fetches the PR via the GitHub API
+    /// and emits the version, tag name, major tag name, merge commit SHA,
+    /// and PR body. Requires `GH_TOKEN` or `GITHUB_TOKEN` in the env.
+    #[arg(long, value_name = "PR_NUMBER", conflicts_with_all = ["bump_type", "raw", "dry_run"])]
+    release_from_pr: Option<u32>,
 }
 
 fn log(msg: &str, is_raw: bool) {
@@ -150,10 +157,17 @@ fn run() -> BumperResult<ExitCode> {
     let is_raw = args.raw;
     let output = args.output;
 
-    // --output json is only valid with --bump-type or --raw
+    // Handle --release-from-pr: resolves a merged release PR to a tag spec.
+    // This is used by the version workflow after a release PR is merged.
+    if let Some(pr_number) = args.release_from_pr {
+        run_release(pr_number, output)?;
+        return Ok(ExitCode::Ok);
+    }
+
+    // --output json is only valid with --bump-type, --raw, or --release-from-pr
     if output == Output::Json && !is_bump_type && !is_raw {
         return Err(BumperError::InvalidConfig(
-            "--output json is only valid with --bump-type or --raw".to_string(),
+            "--output json is only valid with --bump-type, --raw, or --release-from-pr".to_string(),
         ));
     }
 
@@ -500,5 +514,156 @@ fn main() {
             eprintln!("Error: {}", e);
             process::exit(1);
         }
+    }
+}
+
+/// Parses a release branch name like `release/v5.2.1` into a `Version`.
+/// Returns `None` if the branch name does not match the expected pattern.
+fn parse_release_branch(branch: &str) -> Option<versioner::Version> {
+    // Strip an optional leading "release/" prefix.
+    let version_str = branch.strip_prefix("release/").unwrap_or(branch);
+    // Must be just the version with no other suffix.
+    let prefix = "v";
+    let stripped = version_str.strip_prefix(prefix).unwrap_or(version_str);
+    versioner::Version::parse(stripped).ok()
+}
+
+/// Resolves a merged release PR to a tag specification via the GitHub API.
+/// Emits either JSON (when output is `Output::Json`) or human-readable text.
+fn run_release(pr_number: u32, output: Output) -> BumperResult<()> {
+    use std::process::Command;
+
+    // Require a GitHub token in the env.
+    let token = std::env::var("GH_TOKEN")
+        .ok()
+        .or_else(|| std::env::var("GITHUB_TOKEN").ok())
+        .ok_or_else(|| {
+            BumperError::InvalidConfig(
+                "--release-from-pr requires GH_TOKEN or GITHUB_TOKEN in the environment"
+                    .to_string(),
+            )
+        })?;
+
+    // Use `gh api` to fetch the PR. We could use reqwest directly, but `gh`
+    // is already a dependency in the workflow environment and avoids adding
+    // a new HTTP crate.
+    let output_json = Command::new("gh")
+        .args([
+            "api",
+            "--method",
+            "GET",
+            &format!("/repos/{{owner}}/{{repo}}/pulls/{}", pr_number),
+        ])
+        .env("GH_TOKEN", &token)
+        .output()
+        .map_err(|e| BumperError::GitError(format!("Failed to invoke gh CLI: {}", e)))?;
+
+    if !output_json.status.success() {
+        let stderr = String::from_utf8_lossy(&output_json.stderr);
+        return Err(BumperError::InvalidConfig(format!(
+            "gh api failed: {}",
+            stderr.trim()
+        )));
+    }
+
+    let pr: serde_json::Value = serde_json::from_slice(&output_json.stdout)
+        .map_err(|e| BumperError::InvalidConfig(format!("Failed to parse PR JSON: {}", e)))?;
+
+    // Validate the PR is merged.
+    let merged = pr.get("merged").and_then(|v| v.as_bool()).unwrap_or(false);
+    if !merged {
+        return Err(BumperError::InvalidConfig(format!(
+            "PR #{} is not merged",
+            pr_number
+        )));
+    }
+
+    // Extract the head branch name.
+    let head_ref = pr
+        .get("head")
+        .and_then(|h| h.get("ref"))
+        .and_then(|r| r.as_str())
+        .ok_or_else(|| BumperError::InvalidConfig(format!("PR #{} has no head.ref", pr_number)))?;
+
+    // Parse the version from the head branch.
+    let version = parse_release_branch(head_ref).ok_or_else(|| {
+        BumperError::InvalidConfig(format!(
+            "PR #{} head branch '{}' does not match release/v<semver>",
+            pr_number, head_ref
+        ))
+    })?;
+
+    // Extract the merge commit SHA.
+    let merge_commit_sha = pr
+        .get("merge_commit_sha")
+        .and_then(|s| s.as_str())
+        .ok_or_else(|| {
+            BumperError::InvalidConfig(format!("PR #{} has no merge_commit_sha", pr_number))
+        })?;
+
+    let title = pr
+        .get("title")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string();
+    let body = pr
+        .get("body")
+        .and_then(|b| b.as_str())
+        .unwrap_or("")
+        .to_string();
+    let tag_name = format!("v{}", version);
+    let major_tag_name = format!("v{}", version.major);
+
+    if output == Output::Json {
+        let json = serde_json::json!({
+            "version": version.to_string(),
+            "tag_name": tag_name,
+            "major_tag_name": major_tag_name,
+            "merge_commit_sha": merge_commit_sha,
+            "title": title,
+            "body": body,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json).expect("failed to serialize release JSON output")
+        );
+    } else {
+        println!("version:        {}", version);
+        println!("tag_name:      {}", tag_name);
+        println!("major_tag:     {}", major_tag_name);
+        println!("merge_commit:  {}", merge_commit_sha);
+        println!("title:         {}", title);
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_release_branch_with_prefix() {
+        let v = parse_release_branch("release/v5.2.1").unwrap();
+        assert_eq!(v.to_string(), "5.2.1");
+    }
+
+    #[test]
+    fn parse_release_branch_without_prefix() {
+        let v = parse_release_branch("v5.2.1").unwrap();
+        assert_eq!(v.to_string(), "5.2.1");
+    }
+
+    #[test]
+    fn parse_release_branch_bare_version() {
+        let v = parse_release_branch("5.2.1").unwrap();
+        assert_eq!(v.to_string(), "5.2.1");
+    }
+
+    #[test]
+    fn parse_release_branch_invalid() {
+        assert!(parse_release_branch("feature-x").is_none());
+        assert!(parse_release_branch("release/v").is_none());
+        assert!(parse_release_branch("").is_none());
     }
 }

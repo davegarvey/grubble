@@ -33,13 +33,20 @@ jobs:
           wait-interval: 10
 
   version:
+    name: Version
     runs-on: ubuntu-latest
     needs: [wait-for-ci]
     if: always() && (needs.wait-for-ci.result == 'success' || github.event_name == 'workflow_dispatch')
     outputs:
-      version_changed: ${{ steps.bump.outputs.changed }}
-      new_version: ${{ steps.bump.outputs.version }}
-      tag_name: ${{ steps.bump.outputs.tag_name }}
+      # Only true when a release has actually been created (post-merge).
+      # Opening a release PR sets this to false; the human must merge the
+      # PR, and the next workflow run creates the tag/release and sets
+      # this to true. This ensures downstream jobs (test, build, publish)
+      # only run when there's a real release to test/build/publish.
+      version_changed: ${{ steps.release.outputs.released }}
+      new_version: ${{ steps.release.outputs.version }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      pr_number: ${{ steps.detect.outputs.pr_number }}
     permissions:
       contents: write        # Push commits and tags
       pull-requests: write   # Create the release PR
@@ -77,58 +84,199 @@ jobs:
           fi
         done
 
-    - name: Bump version
+    # Canonical release-please-style flow:
+    #   1. Compute the next version (dry-run, no side effects).
+    #   2. If the version would change, open or update a release PR on a
+    #      release/v<version> branch. The PR contains the version bump
+    #      commit + CHANGELOG entry. NO auto-merge — a human reviews and
+    #      merges the PR.
+    #   3. On the next push to main, detect the most recent merged release
+    #      PR. If found, create the v<version> tag and GitHub Release on
+    #      the merge commit (via the GitHub API). This is the canonical
+    #      "tag on the main merge commit" pattern used by release-please.
+    #
+    # The previous flow pre-tagged the release branch commit, which had to
+    # be preserved through the merge (vulnerable to orphaning on squash).
+    # The canonical pattern sidesteps this entirely: the tag is created
+    # AFTER the merge, on the merge commit, by definition correct.
+
+    - name: Bump (dry-run)
       id: bump
       if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_version_bump != 'true'
       run: |
         VERSION_BEFORE=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-
-        ./target/release/grubble \
-          --git-user-name "github-actions[bot]" \
-          --git-user-email "41898282+github-actions[bot]@users.noreply.github.com" \
-          --preset rust \
-          --tag \
-          --release-notes \
-          --changelog \
-          --update-major-tag
-
-        VERSION_AFTER=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-
+        # --dry-run computes the next version without modifying files,
+        # committing, or tagging. It exits 0 in all non-error cases.
+        VERSION_AFTER=$(./target/release/grubble --preset rust --dry-run)
+        if [ -z "$VERSION_AFTER" ]; then
+          VERSION_AFTER="$VERSION_BEFORE"
+        fi
         if [ "$VERSION_AFTER" != "$VERSION_BEFORE" ]; then
           echo "changed=true" >> $GITHUB_OUTPUT
+          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
         else
           echo "changed=false" >> $GITHUB_OUTPUT
+          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
         fi
-        echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
-        echo "tag_name=v$VERSION_AFTER" >> $GITHUB_OUTPUT
 
-    - name: Push to release branch and create PR
+    - name: Detect merged release PR
+      id: detect
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        if [ "${{ steps.bump.outputs.changed }}" != "true" ]; then
-          echo "No version change — skipping push and PR creation."
-          exit 0
+        # Find the most recent merged PR whose head branch matches
+        # release/v<semver>. If found, emit its number and merge commit SHA.
+        # The "Release merged PR" step below uses this to create the tag.
+        PR_INFO=$(gh pr list \
+          --state merged \
+          --base main \
+          --limit 20 \
+          --json number,headRefName,mergeCommit,mergedAt \
+          | jq -r '[.[] | select(.headRefName | test("^release/v[0-9]+\\.[0-9]+\\.[0-9]+$"))] | sort_by(.mergedAt) | last // empty')
+        if [ -n "$PR_INFO" ] && [ "$PR_INFO" != "null" ]; then
+          PR_NUMBER=$(echo "$PR_INFO" | jq -r '.number')
+          MERGE_SHA=$(echo "$PR_INFO" | jq -r '.mergeCommit.oid')
+          echo "merged=true" >> $GITHUB_OUTPUT
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "merge_sha=$MERGE_SHA" >> $GITHUB_OUTPUT
+        else
+          echo "merged=false" >> $GITHUB_OUTPUT
         fi
 
+    - name: Open or update release PR
+      if: steps.bump.outputs.changed == 'true' && steps.detect.outputs.merged != 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
         VERSION="${{ steps.bump.outputs.version }}"
         BRANCH="release/v${VERSION}"
 
-        # Force-create the branch in case a previous run left one behind on the remote.
+        # Run grubble on the release branch: bumps Cargo.toml, updates
+        # CHANGELOG.md. NO --tag here — the tag is created on the main
+        # merge commit by the "Release merged PR" step after a human merges
+        # the PR. Pre-tagging the release branch commit is what caused
+        # repeated tag-orphaning issues (#73, PRs #76/#77/#78). The
+        # canonical release-please pattern is to tag the merge commit.
         git checkout -B "${BRANCH}"
-        git push --set-upstream origin "${BRANCH}" --force
-        git push --tags --force
+        ./target/release/grubble \
+          --git-user-name "github-actions[bot]" \
+          --git-user-email "41898282+github-actions[bot]@users.noreply.github.com" \
+          --git-branch "${BRANCH}" \
+          --preset rust \
+          --changelog \
+          --push
 
-        PR_URL=$(gh pr create \
-          --base main \
-          --head "${BRANCH}" \
-          --title "Release v${VERSION}" \
-          --body "Automated release PR created by grubble.")
-        # Use a merge commit (not --squash) so the release branch commit — which
-        # carries the v<version> tag — becomes a parent of the merge commit
-        # on main. With squash, the tag would be orphaned and the next workflow
-        # run would fail with "package version ahead of latest tag".
-        gh pr merge "${PR_URL}" --auto --merge
+        # Open or update the PR. We don't enable auto-merge — a human
+        # reviews and merges the release PR. This is the canonical
+        # release-please pattern.
+        if gh pr view "${BRANCH}" >/dev/null 2>&1; then
+          echo "PR already exists for ${BRANCH}; branch was force-pushed."
+        else
+          gh pr create \
+            --base main \
+            --head "${BRANCH}" \
+            --title "Release v${VERSION}" \
+            --body "Automated release PR created by grubble.
+
+        - Version: v${VERSION}
+        - Bump source: ${{ github.sha }}"
+          echo "Release PR opened for ${BRANCH}"
+        fi
+
+    - name: Release merged PR
+      id: release
+      if: steps.detect.outputs.merged == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        PR_NUMBER="${{ steps.detect.outputs.pr_number }}"
+        # Use grubble release to resolve the PR to a tag spec. The
+        # subcommand validates the PR is merged, parses the version from
+        # the head branch, and emits the merge commit SHA.
+        RELEASE_JSON=$(./target/release/grubble --release-from-pr "${PR_NUMBER}" --output json)
+        echo "$RELEASE_JSON" | jq .
+
+        VERSION=$(echo "$RELEASE_JSON" | jq -r '.version')
+        TAG_NAME=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+        MAJOR_TAG=$(echo "$RELEASE_JSON" | jq -r '.major_tag_name')
+        MERGE_SHA=$(echo "$RELEASE_JSON" | jq -r '.merge_commit_sha')
+        BODY=$(echo "$RELEASE_JSON" | jq -r '.body')
+
+        if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+          echo "::error::Failed to resolve release for PR #${PR_NUMBER}"
+          exit 1
+        fi
+
+        # Create the v<version> tag on the merge commit (idempotent: skip
+        # if it already exists on this commit). Only emit `released=true`
+        # if we actually created a NEW tag — this prevents subsequent
+        # workflow runs (e.g., on every push to main) from re-triggering
+        # the full test/build/publish pipeline for an already-released
+        # version.
+        RELEASED=false
+        if gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
+          EXISTING_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG_NAME}" | jq -r '.object.sha')
+          if [ "$EXISTING_SHA" = "$MERGE_SHA" ]; then
+            echo "Tag ${TAG_NAME} already exists on ${MERGE_SHA}; nothing to do"
+          else
+            echo "::error::Tag ${TAG_NAME} exists on a different commit (${EXISTING_SHA}); refusing to move"
+            exit 1
+          fi
+        else
+          echo "Creating tag ${TAG_NAME} on ${MERGE_SHA}"
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f "ref=refs/tags/${TAG_NAME}" \
+            -f "sha=${MERGE_SHA}"
+          RELEASED=true
+        fi
+
+        # Update the v<major> floating tag to the same merge commit.
+        if gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${MAJOR_TAG}" >/dev/null 2>&1; then
+          echo "Updating floating tag ${MAJOR_TAG} to ${MERGE_SHA}"
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/git/refs/tags/${MAJOR_TAG}" \
+            -f "sha=${MERGE_SHA}" \
+            -f "force=true" >/dev/null
+        else
+          echo "Creating floating tag ${MAJOR_TAG} on ${MERGE_SHA}"
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f "ref=refs/tags/${MAJOR_TAG}" \
+            -f "sha=${MERGE_SHA}"
+        fi
+
+        # Create the GitHub Release for the tag (if it doesn't exist yet).
+        # The body is the release PR body; the CHANGELOG entry is what
+        # callers will see most prominently.
+        if ! gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+          echo "Creating GitHub release for ${TAG_NAME}"
+          gh release create "${TAG_NAME}" \
+            --target "${MERGE_SHA}" \
+            --title "v${VERSION}" \
+            --notes "${BODY}" \
+            --verify-latest
+          RELEASED=true
+        else
+          echo "GitHub release for ${TAG_NAME} already exists"
+        fi
+
+        # Emit step outputs for downstream jobs. `released=true` is only
+        # set when a new tag or release was created, so the downstream
+        # jobs run exactly once per release.
+        if [ "$RELEASED" = "true" ]; then
+          echo "released=true" >> $GITHUB_OUTPUT
+        else
+          echo "released=false" >> $GITHUB_OUTPUT
+        fi
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
 
   test:
     name: Pre-release Tests
