@@ -253,31 +253,69 @@ jobs:
       # release PR is still being processed by the Release step. By the
       # time this step runs, the Release step above has already created
       # any needed tags, so the "file ahead of tag" validation passes.
+      #
+      # The release branch name is derived AFTER grubble writes the
+      # version to Cargo.toml, not from the dry-run. This ensures the
+      # branch name always matches the actual file content even when
+      # grubble's file-behind-tag sync logic produces a different
+      # version than the dry-run predicted.
       if: steps.bump.outputs.changed == 'true'
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        VERSION="${{ steps.bump.outputs.version }}"
-        BRANCH="release/v${VERSION}"
-
         # Fetch tags created by the Release step (above). Without this,
         # grubble would see the old tag and refuse to bump with "file
         # ahead of tag" since Cargo.toml was updated by the merged PR.
         git fetch origin --tags --force
 
-        # Run grubble on the release branch: bumps Cargo.toml, updates
-        # CHANGELOG.md. NO --tag here — the tag is created on the main
-        # merge commit by the "Release merged PR" step after a human merges
-        # the PR.
-        git checkout -B "${BRANCH}"
+        # Create a temp branch from current HEAD (main after merge).
+        # We'll rename it after we know the actual version. The
+        # concurrency group prevents any other run from racing.
+        TMP_BRANCH="release/_tmp"
+        git checkout -B "${TMP_BRANCH}"
+
+        # Run grubble: bump version, update CHANGELOG, commit (no push).
         ./target/release/grubble \
           --git-user-name "github-actions[bot]" \
           --git-user-email "41898282+github-actions[bot]@users.noreply.github.com" \
-          --git-branch "${BRANCH}" \
           --preset rust \
-          --changelog \
-          --push \
-          --force-push
+          --changelog
+
+        # Read the actual new version from Cargo.toml after grubble
+        # completes (accounts for sync logic that may have fired).
+        ACTUAL_VERSION=$(grep -m1 '^version = "' Cargo.toml | cut -d'"' -f2)
+        if [ -z "$ACTUAL_VERSION" ]; then
+          echo "::error::Failed to read version from Cargo.toml after grubble run"
+          exit 1
+        fi
+        BRANCH="release/v${ACTUAL_VERSION}"
+
+        # If the actual version matches the latest tag, grubble only
+        # synced without bumping. Skip PR creation.
+        LATEST_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)
+        if [ "v${ACTUAL_VERSION}" = "$LATEST_TAG" ]; then
+          echo "Version ${ACTUAL_VERSION} matches latest tag ${LATEST_TAG}; no bump needed"
+          git checkout - && git branch -D "${TMP_BRANCH}"
+          exit 0
+        fi
+
+        # If a release branch already exists for the dry-run version
+        # (which may differ from the actual version when sync fired),
+        # close its PR and delete the stale branch.
+        DRY_RUN_VERSION="${{ steps.bump.outputs.version }}"
+        if [ "$DRY_RUN_VERSION" != "$ACTUAL_VERSION" ]; then
+          STALE_BRANCH="release/v${DRY_RUN_VERSION}"
+          STALE_PR=$(gh pr list --head "$STALE_BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$STALE_PR" ]; then
+            echo "Version changed (dry-run: ${DRY_RUN_VERSION}, actual: ${ACTUAL_VERSION}); closing stale PR #${STALE_PR}"
+            gh pr close "$STALE_PR" --comment "Superseded by ${BRANCH} — version changed due to drift repair"
+            gh api "repos/${GITHUB_REPOSITORY}/git/refs/heads/${STALE_BRANCH}" -X DELETE 2>/dev/null || true
+          fi
+        fi
+
+        # Rename branch to the correct name and push.
+        git branch -m "${TMP_BRANCH}" "${BRANCH}"
+        git push origin "${BRANCH}" --force-with-lease
 
         # Create a passing check run for the required "test" check on the
         # pushed commit. The pull_request event from the bot push cannot
@@ -300,12 +338,14 @@ jobs:
 
         if gh pr view "${BRANCH}" >/dev/null 2>&1; then
           echo "PR already exists for ${BRANCH}; branch was force-pushed."
-          gh pr edit "${BRANCH}" --body "${CHANGELOG_BODY}"
+          gh pr edit "${BRANCH}" \
+            --title "Release v${ACTUAL_VERSION}" \
+            --body "${CHANGELOG_BODY}"
         else
           gh pr create \
             --base main \
             --head "${BRANCH}" \
-            --title "Release v${VERSION}" \
+            --title "Release v${ACTUAL_VERSION}" \
             --body "${CHANGELOG_BODY}"
           echo "Release PR opened for ${BRANCH}"
         fi
