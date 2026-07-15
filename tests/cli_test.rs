@@ -2,14 +2,7 @@ use std::process::Command;
 use tempfile::TempDir;
 
 fn get_grubble_bin() -> String {
-    // Try to find grubble in PATH first
-    if let Ok(output) = Command::new("which").arg("grubble").output() {
-        if output.status.success() {
-            return String::from_utf8_lossy(&output.stdout).trim().to_string();
-        }
-    }
-
-    // Fall back to looking in cargo target directory
+    // Prefer local build over globally installed grubble
     let cargo_target = std::env::var("CARGO_MANIFEST_DIR")
         .ok()
         .map(std::path::PathBuf::from)
@@ -33,6 +26,13 @@ fn get_grubble_bin() -> String {
 
     if cargo_target_release.exists() {
         return cargo_target_release.to_string_lossy().to_string();
+    }
+
+    // Fall back to PATH
+    if let Ok(output) = Command::new("which").arg("grubble").output() {
+        if output.status.success() {
+            return String::from_utf8_lossy(&output.stdout).trim().to_string();
+        }
     }
 
     panic!("Could not find grubble binary. Build with 'cargo build' first.");
@@ -147,6 +147,208 @@ fn test_bump_type_major() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.trim(), "major");
+}
+
+#[test]
+fn test_bump_type_no_tag_scans_all_commits() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Delete the tag so there's no tag reachable from HEAD
+    Command::new("git")
+        .args(["tag", "-d", "v1.0.0"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to delete tag");
+
+    // Add a feat commit — scans all history and returns minor
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "feat: add new feature"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create feat commit");
+
+    cmd.arg("--bump-type");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "minor");
+}
+
+#[test]
+fn test_initial_version_bump_type_patch() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Delete the tag so no tag is reachable from HEAD
+    Command::new("git")
+        .args(["tag", "-d", "v1.0.0"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to delete tag");
+
+    // Add a fix commit
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "fix: resolve bug"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create fix commit");
+
+    cmd.arg("--initial-version");
+    cmd.arg("0.1.0");
+    cmd.arg("--bump-type");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "patch");
+}
+
+#[test]
+fn test_initial_version_bump_type_minor() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Delete the tag so no tag is reachable from HEAD
+    Command::new("git")
+        .args(["tag", "-d", "v1.0.0"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to delete tag");
+
+    // Add a feat commit
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "feat: add new feature"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create feat commit");
+
+    cmd.arg("--initial-version");
+    cmd.arg("0.2.0");
+    cmd.arg("--bump-type");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "minor");
+}
+
+#[test]
+fn test_initial_version_normal_bump_creates_tag() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Delete the tag so no tag is reachable from HEAD
+    Command::new("git")
+        .args(["tag", "-d", "v1.0.0"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to delete tag");
+
+    // Add a fix commit
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "fix: resolve bug"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create fix commit");
+
+    cmd.arg("--initial-version");
+    cmd.arg("0.1.0");
+    cmd.arg("--tag");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert!(output.status.success());
+
+    // Check the tag was created
+    let tags_output = Command::new("git")
+        .args(["tag", "-l"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to list tags");
+
+    let tags = String::from_utf8_lossy(&tags_output.stdout);
+    // v1.0.0 was deleted; v0.1.1 is the new tag (0.1.0 + patch bump)
+    assert!(
+        tags.contains("v0.1.1"),
+        "expected v0.1.1 tag, got: {}",
+        tags
+    );
+}
+
+#[test]
+fn test_initial_version_errors_when_tag_exists() {
+    let (_dir, mut cmd) = setup_test_repo();
+
+    // Tag v1.0.0 exists (from setup_test_repo)
+    cmd.arg("--initial-version");
+    cmd.arg("0.1.0");
+    cmd.arg("--bump-type");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_ne!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("v1.0.0"));
+    assert!(stderr.contains("--release-version"));
+}
+
+#[test]
+fn test_initial_version_with_raw() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Delete the tag so no tag is reachable from HEAD
+    Command::new("git")
+        .args(["tag", "-d", "v1.0.0"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to delete tag");
+
+    // Add a feat commit
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "feat: add feature"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create feat commit");
+
+    cmd.arg("--initial-version");
+    cmd.arg("0.1.0");
+    cmd.arg("--raw");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "0.2.0");
+}
+
+#[test]
+fn test_initial_version_invalid_semver() {
+    let (_dir, mut cmd) = setup_test_repo();
+
+    cmd.arg("--initial-version");
+    cmd.arg("not-a-version");
+    cmd.arg("--bump-type");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_ne!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Invalid version format"));
+}
+
+#[test]
+fn test_no_tag_proceeds_normally() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Delete the tag so no tag is reachable
+    Command::new("git")
+        .args(["tag", "-d", "v1.0.0"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to delete tag");
+
+    // No --initial-version, no tag — grubble scans all commits, bumps from 0.0.0
+    cmd.arg("--bump-type");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Only a chore: init commit exists — no bump triggered
+    assert_eq!(stdout.trim(), "none");
 }
 
 #[test]

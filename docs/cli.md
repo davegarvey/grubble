@@ -17,6 +17,7 @@ grubble --git-branch release/v0.35.0  # push the bump to a release branch (works
 grubble --git-branch release/v0.35.0 --force-push  # same, with --force-with-lease (for workflow-owned branches)
 grubble --changelog-entry             # print the latest entry from CHANGELOG.md
 grubble --release-from-pr 79          # resolve a merged release PR to a tag spec (for canonical release-please workflows)
+grubble --initial-version 0.1.0       # override baseline version for first-release detection
 grubble --help               # full flag reference
 ```
 
@@ -47,6 +48,7 @@ Every flag has a corresponding option in `.versionrc.json` (see [Configuration](
 | `--output` | enum | `text` | Output format: `text` or `json`. Valid in all modes. In bump mode emits `{"version": "x.y.z"}` after the commit/push. |
 | `--release-from-pr` | int | — | Resolve a merged release PR to a tag spec. Requires `GH_TOKEN` or `GITHUB_TOKEN`. |
 | `--changelog-entry` | bool | `false` | Read the latest entry from `CHANGELOG.md` and print it. |
+| `--initial-version` | semver | — | Override the baseline version for first-release detection (default: `0.0.0`). When no git tag exists, grubble scans all commits and bumps from `0.0.0`. Use this to start from a different version. Incompatible with `--release-version`, `--release-from-pr`, and `--changelog-entry`. |
 
 ## `--release-from-pr` output
 
@@ -80,3 +82,31 @@ grubble --raw --preset rust --output json
 ```
 
 `--output json` works in all modes. In bump mode (with `--push`, `--changelog`, etc.) it emits `{"version": "x.y.z"}` after files are written and pushed. Use `--output json` from CI scripts that need to parse the result instead of shell-substring matching.
+
+## First Release (Bootstrapping)
+
+When a repository has no git tags, grubble scans all commits from the beginning and bumps from `0.0.0` by default:
+
+```bash
+# On a fresh repo with commits but no tags:
+git init
+git add .
+git commit -m "feat: initial implementation"
+git commit -m "fix: resolve edge case"
+
+grubble --bump-type
+# minor — detects the feat: commit
+
+grubble --tag
+# Creates tag v0.1.0 on the bump commit.
+# Subsequent runs detect the tag and work normally.
+```
+
+Use `--initial-version` to override the baseline if your project should start from a different version:
+
+```bash
+grubble --initial-version 1.0.0 --tag
+# Creates tag v1.0.1 (bumped from 1.0.0).
+```
+
+`--initial-version` errors if a tag already exists — it's only for repos with no previous tags.
