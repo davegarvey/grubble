@@ -87,22 +87,23 @@ The Bump step's output version SHALL be used only to determine `changed=true/fal
 - **AND** the release branch SHALL be named `release/v5.4.1`
 
 ### Requirement: Open step derives branch name from actual version written
-The Open step SHALL run grubble on a temporary branch to perform the version bump and CHANGELOG update. After grubble completes, the step SHALL read the actual new version from Cargo.toml and derive the release branch name as `release/v<actual_version>`. The branch SHALL be renamed and pushed under this derived name.
+The Open step SHALL run grubble on a temporary branch to perform the version bump and CHANGELOG update with `--output json`. After grubble completes, the step SHALL read the actual new version from the JSON output (parsed with `jq -r '.version'`) and derive the release branch name as `release/v<actual_version>`. The branch SHALL be renamed and pushed under this derived name.
 
 This ensures the release branch name always matches the version grubble actually wrote, accounting for any sync logic that may have triggered during the run.
 
 #### Scenario: sync logic fires during Open step
 - **GIVEN** Cargo.toml is version `5.3.1` and latest tag is `v5.4.0` (Cargo.toml is behind the tag)
-- **WHEN** the Open step runs grubble
+- **WHEN** the Open step runs grubble with `--output json`
 - **THEN** grubble SHALL sync Cargo.toml to `5.4.0` first, then compute and write `5.4.1` (patch bump from synced version)
-- **AND** the Open step SHALL read `5.4.1` from Cargo.toml after grubble completes
+- **AND** the JSON output SHALL contain `{"version": "5.4.1"}`
+- **AND** the Open step SHALL parse `5.4.1` from the JSON output
 - **AND** the release branch SHALL be named `release/v5.4.1`
 
 #### Scenario: grubble writes the same version as the dry-run predicted
 - **GIVEN** Cargo.toml is `5.3.0`, latest tag is `v5.3.0`, and dry-run predicts `5.3.1`
-- **WHEN** the Open step runs grubble
+- **WHEN** the Open step runs grubble with `--output json`
 - **THEN** grubble SHALL write `5.3.1` to Cargo.toml (no sync needed)
-- **AND** the Open step SHALL read `5.3.1` from Cargo.toml after grubble completes
+- **AND** the JSON output SHALL contain `{"version": "5.3.1"}`
 - **AND** the release branch SHALL be named `release/v5.3.1`
 
 ### Requirement: Open step cleans up stale branches and PRs when version diverges

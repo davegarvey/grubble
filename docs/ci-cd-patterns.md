@@ -54,7 +54,7 @@ grubble --raw --preset rust --output json
 # }
 ```
 
-`--output json` is rejected when combined with the normal run mode or `--dry-run` (those modes always print human-readable text). Use `--output json` from CI scripts that need to parse the result instead of shell-substring matching.
+`--output json` also works in bump mode (with `--push`, `--changelog`, etc.), emitting `{"version": "x.y.z"}` after files are written and pushed. This is useful for workflows that need the actual version without grepping package files. Use `--output json` from CI scripts that need to parse the result instead of shell-substring matching.
 
 ## How It Works
 
