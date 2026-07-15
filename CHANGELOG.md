@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.6.1] - 2026-07-15
+
+### Fixed
+
+- reorder workflow steps to Bump after Release to prevent redundant version bump (#125)
+
 ## [5.5.0] - 2026-07-15
 
 ### Added
