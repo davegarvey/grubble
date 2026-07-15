@@ -4,9 +4,11 @@
 Defines the canonical release-please-style workflow for grubble's own repo: every push to `main` triggers a dry-run version computation. If a bump is needed, a release PR is opened on a `release/v<version>` branch. A human reviews and merges the PR. The next push to `main` detects the merged release PR and creates the tag + GitHub Release on the main merge commit via the GitHub API. This matches the `semantic-release` and `googleapis/release-please` patterns.
 ## Requirements
 ### Requirement: version.yml opens a release PR on every push that warrants a bump
-The `version.yml` workflow SHALL run on every push to `main`. When the Bump step detects a conventional commit since the last release that warrants a version bump, the workflow SHALL open (or update) a release PR. The release PR's head branch SHALL be named `release/v<new_version>` and SHALL contain a single commit with the version set (Cargo.toml, CHANGELOG.md). The version SHALL be written using `grubble --release-version`, which writes the exact dry-run version without forward-bump or sync logic. The git tag SHALL NOT be created on the release branch — the tag is created on the main merge commit after the PR is merged (see "workflow tags the merge commit" requirement below).
+The workflow steps SHALL run in this order: (1) **Detect merged release PR**, (2) **Release merged PR** (create tag + GitHub Release), (3) **Bump (dry-run)** (compute next version), (4) **Open or update release PR** (create/update the branch). The Bump step MUST run AFTER the Release step so that any tag just created by the Release step is visible to the dry-run analysis. Without this ordering, the dry-run would re-analyze commits already included in the just-released tag, producing a stale next-version.
 
-The Open step is independent of the Release step: it SHALL run whenever a new release is needed (Bump step reports `changed=true`), regardless of whether a previously-merged release PR is still being processed by the Release step. The two steps do not race — they run sequentially within a single job, and the Release step uses the GitHub API (`gh api`) which is independent of the Open step's branch creation and `gh pr create` call. This decoupling is what makes the workflow correct after a "quiet period": if v5.2.2 was released long ago and a new `fix:` lands on main, the Bump step computes v5.2.3 (`changed=true`), the Detect step still finds the old v5.2.2 release PR (`merged=true`), and the Open step opens a fresh release PR for v5.2.3.
+The Release step is idempotent and uses the GitHub API (`gh api`). The Bump step runs for every push (unless `skip_version_bump` is set). The Open step is gated on the Bump step's `changed` output. This ordering handles the "quiet period" correctly: if v5.2.2 was released long ago and a new `fix:` lands on main, the Detect step still finds the old v5.2.2 release PR (`merged=true`), the Release step is a no-op (tag exists), and after the Bump step computes v5.2.3, the Open step opens a fresh release PR for v5.2.3.
+
+The version SHALL be written using `grubble --release-version`, which writes the exact dry-run version without forward-bump or sync logic. The git tag SHALL NOT be created on the release branch — the tag is created on the main merge commit after the PR is merged.
 
 #### Scenario: a feat commit triggers a new release PR
 - **WHEN** a push to `main` contains one or more `feat:` or `feat!:` commits since the last release
@@ -21,11 +23,24 @@ The Open step is independent of the Release step: it SHALL run whenever a new re
 - **WHEN** a release PR for `release/v<new_version>` is already open (e.g., from a previous push)
 - **THEN** the workflow SHALL update the existing PR's branch with the latest version set commit (force-push the branch)
 
+#### Scenario: step ordering prevents redundant bump after release PR merge
+- **GIVEN** a release PR for v5.5.0 was just auto-merged, creating commit `C` on main
+- **WHEN** the workflow runs on commit `C`
+- **THEN** the Detect step finds the v5.5.0 release PR (`merged=true`)
+- **AND** the Release step creates tag `v5.5.0` on commit `C` via the GitHub API
+- **AND** the Bump step fetches tags, sees `v5.5.0` as the latest tag, and analyzes commits since `v5.5.0`
+- **AND** the only commit since `v5.5.0` is the release commit itself (ignored by the analyser)
+- **AND** the Bump step reports `changed=false`
+- **AND** the Open step does NOT run (no new release PR created)
+
 #### Scenario: new fix after a quiet period (no merged release PR for the new version)
 - **GIVEN** the latest released version is v5.2.2 (with PR #79 already merged and tagged)
 - **WHEN** a `fix:` commit lands on `main` that warrants v5.2.3
-- **THEN** the Bump step SHALL report `changed=true` with `version=5.2.3`, the Open step SHALL open a release PR titled `Release v5.2.3` on `release/v5.2.3`, and the Release step SHALL run but be a no-op (v5.2.2 already tagged and released)
-- **AND** the test/build/publish jobs SHALL be skipped on this run (the new release PR has not been merged yet)
+- **THEN** the Detect step SHALL find the old v5.2.2 release PR (`merged=true`)
+- **AND** the Release step SHALL be a no-op (v5.2.2 already tagged and released)
+- **AND** the Bump step SHALL report `changed=true` with `version=5.2.3`
+- **AND** the Open step SHALL open a release PR titled `Release v5.2.3` on `release/v5.2.3`
+- **AND** the test/build/publish jobs SHALL be skipped on this run (no new tag was created)
 - **WHEN** the human merges the v5.2.3 release PR
 - **THEN** the next push to `main` SHALL detect the merged v5.2.3 release PR and the Release step SHALL create the `v5.2.3` tag and GitHub Release on the merge commit
 
@@ -81,15 +96,17 @@ The Bump step's output version SHALL be used both to determine `changed=true/fal
 - **AND** the dry-run version SHALL be used as the `--release-version` argument in the Open step
 - **AND** the version written to Cargo.toml SHALL be identical to the dry-run version
 
-### Requirement: Open step fetches tags before running grubble
-The Open step SHALL run `git fetch origin --tags --force` before invoking grubble. This ensures tags created by the preceding Release step are visible to the local repository, preventing grubble's `get_last_tag()` from returning a stale tag when generating the CHANGELOG entry via `--release-version --changelog`.
+### Requirement: Bump step fetches tags before dry-run
+The Bump step SHALL run `git fetch origin --tags --force` before invoking grubble's dry-run. This ensures tags created by the preceding Release step (via the GitHub API) are visible to the local repository, preventing the dry-run from using a stale last-tag. This fetch is required even though the checkout step uses `fetch-tags: true` because the Release step creates tags via the GitHub API, not through git.
 
-#### Scenario: Release step creates a new tag moments before Open step
+#### Scenario: Release step creates a new tag moments before Bump step
 - **GIVEN** the Release step just created tag `v5.3.2` on the merge commit
-- **WHEN** the Open step runs `grubble --release-version 5.3.3 --changelog`
+- **WHEN** the Bump step runs `grubble --dry-run --raw`
 - **THEN** `git fetch origin --tags --force` SHALL have been called before grubble
 - **AND** grubble SHALL find `v5.3.2` as the latest tag via `git describe --tags`
-- **AND** the CHANGELOG entry SHALL include commits since `v5.3.2`
+- **AND** the dry-run output SHALL reflect the correct next version after `v5.3.2`
+
+The Open step SHALL also run `git fetch origin --tags --force` before invoking `grubble --release-version --changelog` (defence in depth — the dry-run already fetched, but the CHANGELOG generation also depends on `get_last_tag()`).
 
 ### Requirement: CHANGELOG.md is updated as part of the release commit
 The release commit on the `release/v<version>` branch SHALL include an update to `CHANGELOG.md` with the new release entry, generated by `grubble --release-version --changelog`. The release PR's diff SHALL show both the Cargo.toml version set and the CHANGELOG.md addition.
@@ -98,8 +115,8 @@ The release commit on the `release/v<version>` branch SHALL include an update to
 - **WHEN** a release PR is opened for version 5.2.1
 - **THEN** the PR diff SHALL include a new `## [5.2.1] - <date>` entry in `CHANGELOG.md`
 
-### Requirement: workflow cleans up unreachable tags before the next bump
-The "Clean up stale tags" step SHALL run before the Bump step. It SHALL remove any local `v*` tag that is not reachable from `main` (i.e., the tag points to a commit that is not an ancestor of `main`). This prevents old failed runs from leaving orphan tags that interfere with version detection.
+### Requirement: workflow cleans up unreachable tags before bump
+The "Clean up stale tags" step SHALL run before any tag-dependent analysis. It SHALL remove any local `v*` tag that is not reachable from `main` (i.e., the tag points to a commit that is not an ancestor of `main`). This prevents old failed runs from leaving orphan tags that interfere with version detection. It runs before the Release step so that stale tags do not interfere with the dry-run's `git describe --tags` computation.
 
 #### Scenario: orphan tag from a previous failed run
 - **WHEN** a previous failed run left a `v5.2.0` tag on a release branch commit that was never merged
