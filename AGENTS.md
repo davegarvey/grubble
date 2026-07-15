@@ -1,5 +1,11 @@
 # Agent instructions
 
+## Before starting work
+
+Create branches from latest remote main to avoid stale-local-main issues:
+- `git fetch origin`
+- `git checkout -b <branch-name> origin/main`
+
 ## After completing a PR
 
 1. Move back to main: `git checkout main`
