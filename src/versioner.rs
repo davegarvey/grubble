@@ -16,6 +16,14 @@ impl fmt::Display for Version {
 }
 
 impl Version {
+    pub fn new(major: u32, minor: u32, patch: u32) -> Self {
+        Version {
+            major,
+            minor,
+            patch,
+        }
+    }
+
     pub fn parse(version_str: &str) -> BumperResult<Self> {
         let parts: Vec<&str> = version_str.split('.').collect();
 

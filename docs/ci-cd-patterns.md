@@ -56,6 +56,22 @@ grubble --raw --preset rust --output json
 
 `--output json` also works in bump mode (with `--push`, `--changelog`, etc.), emitting `{"version": "x.y.z"}` after files are written and pushed. This is useful for workflows that need the actual version without grepping package files. Use `--output json` from CI scripts that need to parse the result instead of shell-substring matching.
 
+## First Release
+
+On a repository with no git tags, grubble scans all commits from the beginning and bumps from `0.0.0`:
+
+```bash
+grubble --bump-type --preset rust
+# patch, minor, major, or none — based on all commits
+
+grubble --tag --preset rust
+# Creates the first tag. Subsequent runs work automatically.
+```
+
+Use `--initial-version` to start from a different baseline (e.g., `grubble --initial-version 1.0.0 --tag`).
+
+Bootstrapping is a one-time setup — do it locally, then the action works as normal for subsequent releases.
+
 ## How It Works
 
 1. Sync package files to the latest tag (for `rust` / `node` presets).

@@ -42,7 +42,8 @@ Common Usage:
   grubble --dry-run          # Check if bump is needed (exit 0 if yes, 1 if no)
   grubble --bump-type        # Output bump type (major/minor/patch/none)
   grubble --preset rust      # Use Rust Cargo.toml versioning
-  grubble --changelog        # Generate CHANGELOG.md"
+  grubble --changelog        # Generate CHANGELOG.md
+  grubble --initial-version 0.1.0  # Override baseline for first release"
 )]
 struct Args {
     /// Push changes to remote
@@ -150,6 +151,17 @@ struct Args {
         conflicts_with_all = ["raw", "dry_run", "bump_type", "release_from_pr"]
     )]
     release_version: Option<String>,
+
+    /// Override the baseline version for first-release detection (default: 0.0.0).
+    /// When no git tag exists, grubble scans all commits and bumps from 0.0.0.
+    /// Use this flag to start from a different version (e.g., "0.5.0").
+    /// Mutually exclusive with --release-version, --release-from-pr, and --changelog-entry.
+    #[arg(
+        long,
+        value_name = "SEMVER",
+        conflicts_with_all = ["release_version", "release_from_pr", "changelog_entry"]
+    )]
+    initial_version: Option<String>,
 }
 
 fn log(msg: &str, is_raw: bool) {
@@ -309,6 +321,23 @@ fn run() -> BumperResult<ExitCode> {
         is_raw,
     );
 
+    // Parse --initial-version if provided (validates semver format).
+    // When not set and no tag exists, defaults to 0.0.0.
+    let initial_version = if let Some(ref ver_str) = args.initial_version {
+        let ver = versioner::Version::parse(ver_str)
+            .map_err(|_| BumperError::InvalidVersion(ver_str.clone()))?;
+        if let Some(ref tag) = last_tag {
+            return Err(BumperError::InvalidConfig(format!(
+                "A tag ({tag}) is already reachable from HEAD. \
+                 --initial-version is only for repos with no previous tags. \
+                 Use --release-version instead."
+            )));
+        }
+        Some(ver)
+    } else {
+        None
+    };
+
     let last_tag_version = git::get_last_tag_version(&config)?;
 
     // Validate the file/tag relationship before any work that could mask the state.
@@ -416,7 +445,15 @@ fn run() -> BumperResult<ExitCode> {
         log("Consider configuring these types in .versionrc.json or using standard Conventional Commits types.", is_raw);
     }
 
-    let new_version = current_version.bump(analysis.bump);
+    // When a tag exists, bump from the current (tag-synced) version.
+    // Otherwise, default to 0.0.0 or the --initial-version override.
+    let default_baseline = if last_tag.is_some() {
+        &current_version
+    } else {
+        &versioner::Version::new(0, 0, 0)
+    };
+    let bump_base = initial_version.as_ref().unwrap_or(default_baseline);
+    let new_version = bump_base.bump(analysis.bump);
 
     if config.raw {
         // --raw or --dry-run — don't modify files
@@ -614,10 +651,26 @@ fn run_bump_type(args: &Args, output: Output) -> BumperResult<()> {
 
     git::set_git_config(&config.git_user_name, &config.git_user_email)?;
 
+    // --initial-version validates semver format and errors if a tag already exists
+    if let Some(ref ver_str) = args.initial_version {
+        versioner::Version::parse(ver_str)
+            .map_err(|_| BumperError::InvalidVersion(ver_str.clone()))?;
+        let last_tag = git::get_last_tag()?;
+        if let Some(ref tag) = last_tag {
+            return Err(BumperError::InvalidConfig(format!(
+                "A tag ({tag}) is already reachable from HEAD. \
+                 --initial-version is only for repos with no previous tags. \
+                 Use --release-version instead."
+            )));
+        }
+    }
+
     let strategy = load_strategy(&config);
     let current_version = strategy.get_current_version()?;
 
     let last_tag = git::get_last_tag()?;
+    // When no tag exists, get_commits_since_tag(None) scans all commits.
+    // --initial-version is optional — it only overrides the 0.0.0 default baseline.
     let commits = git::get_commits_since_tag(last_tag.as_deref())?;
 
     if output == Output::Json {
