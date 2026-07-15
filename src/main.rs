@@ -143,7 +143,7 @@ struct Args {
 
 fn log(msg: &str, is_raw: bool) {
     if !is_raw {
-        println!("{}", msg);
+        eprintln!("{}", msg);
     }
 }
 
@@ -175,13 +175,6 @@ fn run() -> BumperResult<ExitCode> {
     if let Some(pr_number) = args.release_from_pr {
         run_release(pr_number, output)?;
         return Ok(ExitCode::Ok);
-    }
-
-    // --output json is only valid with --bump-type, --raw, or --release-from-pr
-    if output == Output::Json && !is_bump_type && !is_raw {
-        return Err(BumperError::InvalidConfig(
-            "--output json is only valid with --bump-type, --raw, or --release-from-pr".to_string(),
-        ));
     }
 
     // Handle --bump-type mode
@@ -482,6 +475,16 @@ fn run() -> BumperResult<ExitCode> {
             }
             log(&format!("{} locally.", actions.join(" ")), is_raw);
         }
+    }
+
+    if output == Output::Json {
+        let json = serde_json::json!({
+            "version": new_version.to_string(),
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json).expect("failed to serialize JSON output")
+        );
     }
 
     Ok(ExitCode::Ok)

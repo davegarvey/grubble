@@ -275,17 +275,17 @@ jobs:
         git checkout -B "${TMP_BRANCH}"
 
         # Run grubble: bump version, update CHANGELOG, commit (no push).
-        ./target/release/grubble \
+        # Use --output json so the actual written version is machine-parseable.
+        BUMP_JSON=$(./target/release/grubble \
           --git-user-name "github-actions[bot]" \
           --git-user-email "41898282+github-actions[bot]@users.noreply.github.com" \
           --preset rust \
-          --changelog
-
-        # Read the actual new version from Cargo.toml after grubble
-        # completes (accounts for sync logic that may have fired).
-        ACTUAL_VERSION=$(grep -m1 '^version = "' Cargo.toml | cut -d'"' -f2)
-        if [ -z "$ACTUAL_VERSION" ]; then
-          echo "::error::Failed to read version from Cargo.toml after grubble run"
+          --changelog \
+          --output json)
+        ACTUAL_VERSION=$(echo "$BUMP_JSON" | jq -r '.version')
+        if [ -z "$ACTUAL_VERSION" ] || [ "$ACTUAL_VERSION" = "null" ]; then
+          echo "::error::Failed to read version from grubble JSON output"
+          echo "$BUMP_JSON"
           exit 1
         fi
         BRANCH="release/v${ACTUAL_VERSION}"

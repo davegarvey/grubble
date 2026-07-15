@@ -11,7 +11,7 @@ grubble --update-major-tag   # also maintain a floating v4 tag
 grubble --raw                # print the new version, no changes
 grubble --dry-run            # preview the bump without applying it
 grubble --bump-type          # print major | minor | patch | none
-grubble --output json        # emit machine-readable output (with --raw or --bump-type)
+grubble --output json        # emit machine-readable output (--raw, --bump-type, or bump path)
 grubble --quiet              # suppress the commit list
 grubble --git-branch release/v0.35.0  # push the bump to a release branch (works on protected branches)
 grubble --git-branch release/v0.35.0 --force-push  # same, with --force-with-lease (for workflow-owned branches)
@@ -44,7 +44,7 @@ Every flag has a corresponding option in `.versionrc.json` (see [Configuration](
 | `--changelog` | bool | `false` | Generate or update `CHANGELOG.md`. |
 | `--bump-type` | bool | `false` | Print `major`, `minor`, `patch`, or `none` and exit. |
 | `--dry-run` | bool | `false` | Check if bump is needed without making changes. |
-| `--output` | enum | `text` | Output format: `text` or `json`. Valid with `--bump-type`, `--raw`, or `--release-from-pr`. |
+| `--output` | enum | `text` | Output format: `text` or `json`. Valid in all modes. In bump mode emits `{"version": "x.y.z"}` after the commit/push. |
 | `--release-from-pr` | int | — | Resolve a merged release PR to a tag spec. Requires `GH_TOKEN` or `GITHUB_TOKEN`. |
 | `--changelog-entry` | bool | `false` | Read the latest entry from `CHANGELOG.md` and print it. |
 
@@ -79,4 +79,4 @@ grubble --raw --preset rust --output json
 # }
 ```
 
-`--output json` is rejected when combined with the normal run mode or `--dry-run` (those modes always print human-readable text). Use `--output json` from CI scripts that need to parse the result instead of shell-substring matching.
+`--output json` works in all modes. In bump mode (with `--push`, `--changelog`, etc.) it emits `{"version": "x.y.z"}` after files are written and pushed. Use `--output json` from CI scripts that need to parse the result instead of shell-substring matching.

@@ -255,10 +255,10 @@ fn test_dry_run_verbose_output() {
     cmd.arg("--dry-run");
     let output = cmd.output().expect("Failed to run grubble");
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should show output in verbose mode (not raw mode)
-    assert!(stdout.contains("Current version"));
-    assert!(stdout.contains("Version bump"));
+    // Log messages now go to stderr so stdout stays clean for --output json
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Current version"));
+    assert!(stderr.contains("Version bump"));
 }
 
 #[test]
@@ -447,29 +447,32 @@ fn test_json_output_invalid_with_dry_run() {
     cmd.arg("json");
     let output = cmd.output().expect("Failed to run grubble");
 
-    assert_ne!(output.status.code(), Some(0));
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    // --dry-run forces --raw internally. With no commits since the tag,
+    // grubble exits early (no bump) with exit 0 and no JSON on stdout.
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stderr.contains("Invalid configuration") || stderr.contains("--output json"),
-        "expected validation error on stderr, got: {}",
-        stderr
+        stdout.is_empty(),
+        "expected no output for no-bump dry-run, got: {}",
+        stdout
     );
 }
 
 #[test]
-fn test_json_output_invalid_with_normal_run() {
+fn test_json_output_normal_run_no_bump() {
     let (_dir, mut cmd) = setup_test_repo();
 
     cmd.arg("--output");
     cmd.arg("json");
     let output = cmd.output().expect("Failed to run grubble");
 
-    assert_ne!(output.status.code(), Some(0));
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    // No commits since tag, so no bump. Exit 0, no JSON output.
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stderr.contains("Invalid configuration") || stderr.contains("--output json"),
-        "expected validation error on stderr, got: {}",
-        stderr
+        stdout.is_empty(),
+        "expected no JSON output for no-bump, got: {}",
+        stdout
     );
 }
 
