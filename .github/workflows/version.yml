@@ -421,6 +421,7 @@ jobs:
 
       - name: Build (native)
         if: ${{ !matrix.cross }}
+        shell: bash
         run: |
           for i in 1 2 3; do
             cargo build --release --target ${{ matrix.target }} && break
