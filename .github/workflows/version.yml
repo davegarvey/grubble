@@ -250,71 +250,41 @@ jobs:
     - name: Open or update release PR
       # The Open step runs whenever a new release is needed (Bump step
       # detected a change), regardless of whether a previously-merged
-      # release PR is still being processed by the Release step. By the
-      # time this step runs, the Release step above has already created
-      # any needed tags, so the "file ahead of tag" validation passes.
-      #
-      # The release branch name is derived AFTER grubble writes the
-      # version to Cargo.toml, not from the dry-run. This ensures the
-      # branch name always matches the actual file content even when
-      # grubble's file-behind-tag sync logic produces a different
-      # version than the dry-run predicted.
+      # release PR is still being processed by the Release step.
+      # Uses --release-version to write the exact dry-run version to
+      # package files — no sync logic, no forward-bump, no divergence
+      # between the predicted and actual version.
       if: steps.bump.outputs.changed == 'true'
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Fetch tags created by the Release step (above). Without this,
-        # grubble would see the old tag and refuse to bump with "file
-        # ahead of tag" since Cargo.toml was updated by the merged PR.
+        VERSION="${{ steps.bump.outputs.version }}"
+        BRANCH="release/v${VERSION}"
+
+        # Fetch tags created by the Release step (above) so grubble's
+        # CHANGELOG generation uses the correct commit range.
         git fetch origin --tags --force
 
-        # Create a temp branch from current HEAD (main after merge).
-        # We'll rename it after we know the actual version. The
-        # concurrency group prevents any other run from racing.
-        TMP_BRANCH="release/_tmp"
-        git checkout -B "${TMP_BRANCH}"
+        # Create a branch from current HEAD.
+        git checkout -B "${BRANCH}"
 
-        # Run grubble: bump version, update CHANGELOG, commit (no push).
-        # Use --output json so the actual written version is machine-parseable.
-        BUMP_JSON=$(./target/release/grubble \
+        # Write the exact release version to Cargo.toml, generate CHANGELOG,
+        # and commit. No sync logic, no file-vs-tag comparison.
+        RELEASE_JSON=$(./target/release/grubble \
+          --release-version "${VERSION}" \
           --git-user-name "github-actions[bot]" \
           --git-user-email "41898282+github-actions[bot]@users.noreply.github.com" \
           --preset rust \
           --changelog \
           --output json)
-        ACTUAL_VERSION=$(echo "$BUMP_JSON" | jq -r '.version')
-        if [ -z "$ACTUAL_VERSION" ] || [ "$ACTUAL_VERSION" = "null" ]; then
+        echo "$RELEASE_JSON"
+        WRITTEN_VERSION=$(echo "$RELEASE_JSON" | jq -r '.version')
+        if [ -z "$WRITTEN_VERSION" ] || [ "$WRITTEN_VERSION" = "null" ]; then
           echo "::error::Failed to read version from grubble JSON output"
-          echo "$BUMP_JSON"
           exit 1
         fi
-        BRANCH="release/v${ACTUAL_VERSION}"
 
-        # If the actual version matches the latest tag, grubble only
-        # synced without bumping. Skip PR creation.
-        LATEST_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)
-        if [ "v${ACTUAL_VERSION}" = "$LATEST_TAG" ]; then
-          echo "Version ${ACTUAL_VERSION} matches latest tag ${LATEST_TAG}; no bump needed"
-          git checkout - && git branch -D "${TMP_BRANCH}"
-          exit 0
-        fi
-
-        # If a release branch already exists for the dry-run version
-        # (which may differ from the actual version when sync fired),
-        # close its PR and delete the stale branch.
-        DRY_RUN_VERSION="${{ steps.bump.outputs.version }}"
-        if [ "$DRY_RUN_VERSION" != "$ACTUAL_VERSION" ]; then
-          STALE_BRANCH="release/v${DRY_RUN_VERSION}"
-          STALE_PR=$(gh pr list --head "$STALE_BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -n "$STALE_PR" ]; then
-            echo "Version changed (dry-run: ${DRY_RUN_VERSION}, actual: ${ACTUAL_VERSION}); closing stale PR #${STALE_PR}"
-            gh pr close "$STALE_PR" --comment "Superseded by ${BRANCH} — version changed due to drift repair"
-            gh api "repos/${GITHUB_REPOSITORY}/git/refs/heads/${STALE_BRANCH}" -X DELETE 2>/dev/null || true
-          fi
-        fi
-
-        # Rename branch to the correct name and push.
-        git branch -m "${TMP_BRANCH}" "${BRANCH}"
+        # Push the release branch.
         git push origin "${BRANCH}" --force-with-lease
 
         # Create a passing check run for the required "test" check on the
@@ -322,7 +292,7 @@ jobs:
         # trigger a new workflow run (GitHub does not create runs from
         # GITHUB_TOKEN events), so we create the check directly via the
         # Check Runs API. The release branch content is the same as main
-        # plus a version bump + CHANGELOG entry — both validated on main.
+        # plus a version set + CHANGELOG entry — both validated on main.
         PUSHED_SHA=$(git rev-parse "${BRANCH}")
         gh api "repos/${GITHUB_REPOSITORY}/check-runs" \
           --method POST \
@@ -339,13 +309,13 @@ jobs:
         if gh pr view "${BRANCH}" >/dev/null 2>&1; then
           echo "PR already exists for ${BRANCH}; branch was force-pushed."
           gh pr edit "${BRANCH}" \
-            --title "Release v${ACTUAL_VERSION}" \
+            --title "Release v${VERSION}" \
             --body "${CHANGELOG_BODY}"
         else
           gh pr create \
             --base main \
             --head "${BRANCH}" \
-            --title "Release v${ACTUAL_VERSION}" \
+            --title "Release v${VERSION}" \
             --body "${CHANGELOG_BODY}"
           echo "Release PR opened for ${BRANCH}"
         fi
