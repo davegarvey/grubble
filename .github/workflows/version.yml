@@ -86,41 +86,22 @@ jobs:
         done
 
     # Canonical release-please-style flow:
-    #   1. Compute the next version (dry-run, no side effects).
-    #   2. If the version would change, open or update a release PR on a
-    #      release/v<version> branch. The PR contains the version bump
-    #      commit + CHANGELOG entry. Auto-merge is enabled below.
-    #      merges the PR.
-    #   3. On the next push to main, detect the most recent merged release
-    #      PR. If found, create the v<version> tag and GitHub Release on
-    #      the merge commit (via the GitHub API). This is the canonical
-    #      "tag on the main merge commit" pattern used by release-please.
+    #   1. Detect the most recent merged release PR on main.
+    #   2. If found, create the v<version> tag and GitHub Release on the
+    #      merge commit (via the GitHub API). This is the canonical "tag
+    #      on the main merge commit" pattern — sidesteps orphaning that
+    #      the previous pre-tag-on-branch pattern was vulnerable to.
+    #      After the tag is created, fetch tags so subsequent steps see it.
+    #   3. Compute the next version (dry-run) based on commits since the
+    #      latest tag (which may be the one just created in step 2).
+    #   4. If the version would change, open or update a release PR on a
+    #      release/v<version> branch with the version bump + CHANGELOG.
     #
-    # The previous flow pre-tagged the release branch commit, which had to
-    # be preserved through the merge (vulnerable to orphaning on squash).
-    # The canonical pattern sidesteps this entirely: the tag is created
-    # AFTER the merge, on the merge commit, by definition correct.
-
-    - name: Bump (dry-run)
-      id: bump
-      if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_version_bump != 'true'
-      run: |
-        VERSION_BEFORE=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-        # --raw --dry-run prints just the next version (no extra lines)
-        # and exits 0 in all non-error cases. The "current" version is
-        # already in Cargo.toml; the "next" version is what would be set
-        # if a release happened. If they differ, a release is needed.
-        VERSION_AFTER=$(./target/release/grubble --preset rust --raw --dry-run)
-        if [ -z "$VERSION_AFTER" ]; then
-          VERSION_AFTER="$VERSION_BEFORE"
-        fi
-        if [ "$VERSION_AFTER" != "$VERSION_BEFORE" ]; then
-          echo "changed=true" >> $GITHUB_OUTPUT
-          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
-        else
-          echo "changed=false" >> $GITHUB_OUTPUT
-          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
-        fi
+    # IMPORTANT: Bump (dry-run) runs AFTER Release merged PR so the tag
+    # created by the Release step is visible to the dry-run. Without this
+    # ordering, the dry-run re-analyzes commits already included in the
+    # just-released tag, producing a stale next-version (e.g. v5.6.0
+    # instead of no bump after releasing v5.5.0).
 
     - name: Detect merged release PR
       id: detect
@@ -148,11 +129,10 @@ jobs:
 
     - name: Release merged PR
       id: release
-      # Process merged release PRs FIRST, so tags are created before the
-      # Open step runs. This avoids the "file ahead of tag" error when
-      # Cargo.toml has been bumped by a merged release PR but the tag
-      # hasn't been created yet. The Release step is idempotent and the
-      # Open step handles the independent "new release needed" case.
+      # Process merged release PRs BEFORE the Bump (dry-run) step, so the
+      # tag is created before the dry-run analyzes commits. Without this
+      # ordering, the dry-run would see the stale tag, re-analyze
+      # already-released commits, and produce a redundant next-version.
       if: steps.detect.outputs.merged == 'true'
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -247,10 +227,36 @@ jobs:
         echo "version=${VERSION}" >> $GITHUB_OUTPUT
         echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
 
+    # Bump runs AFTER Release so it sees any tag just created by the
+    # Release step. Without this ordering, the dry-run would re-analyze
+    # commits already included in the just-released tag, producing a
+    # stale next-version (e.g. v5.6.0 instead of no bump after v5.5.0).
+    - name: Bump (dry-run)
+      id: bump
+      if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_version_bump != 'true'
+      run: |
+        # Fetch tags just created by the Release step (via GitHub API)
+        # so the dry-run uses the correct commit range.
+        git fetch origin --tags --force
+
+        VERSION_BEFORE=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+        # --raw --dry-run prints just the next version (no extra lines)
+        # and exits 0 in all non-error cases. The "current" version is
+        # already in Cargo.toml; the "next" version is what would be set
+        # if a release happened. If they differ, a release is needed.
+        VERSION_AFTER=$(./target/release/grubble --preset rust --raw --dry-run)
+        if [ -z "$VERSION_AFTER" ]; then
+          VERSION_AFTER="$VERSION_BEFORE"
+        fi
+        if [ "$VERSION_AFTER" != "$VERSION_BEFORE" ]; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
+        else
+          echo "changed=false" >> $GITHUB_OUTPUT
+          echo "version=$VERSION_AFTER" >> $GITHUB_OUTPUT
+        fi
+
     - name: Open or update release PR
-      # The Open step runs whenever a new release is needed (Bump step
-      # detected a change), regardless of whether a previously-merged
-      # release PR is still being processed by the Release step.
       # Uses --release-version to write the exact dry-run version to
       # package files — no sync logic, no forward-bump, no divergence
       # between the predicted and actual version.
@@ -391,11 +397,21 @@ jobs:
           ref: ${{ needs.version.outputs.tag_name }}
 
       - name: Setup Rust
+        id: setup-rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
           target: ${{ matrix.target }}
           cache: true
+
+      # Retry Rust setup if it failed (transient runner I/O errors).
+      - name: Setup Rust (retry)
+        if: steps.setup-rust.outcome == 'failure'
+        run: |
+          echo "::warning::Initial Rust setup failed, retrying with direct install..."
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y 2>&1
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          rustup target add ${{ matrix.target }}
 
       - name: Install cross
         if: matrix.cross
@@ -405,7 +421,12 @@ jobs:
 
       - name: Build (native)
         if: ${{ !matrix.cross }}
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          for i in 1 2 3; do
+            cargo build --release --target ${{ matrix.target }} && break
+            echo "::warning::Build attempt $i/3 failed for ${{ matrix.target }}, retrying in 15s..."
+            sleep 15
+          done
 
       - name: Build (cross)
         if: matrix.cross
