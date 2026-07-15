@@ -139,6 +139,17 @@ struct Args {
     /// Pure read-only operation — no files are modified.
     #[arg(long)]
     changelog_entry: bool,
+
+    /// Write an exact version to the package file(s), skipping all bump/sync
+    /// logic. When combined with --changelog, generates a CHANGELOG entry
+    /// using commits since the last tag. No tag or push is created.
+    /// Mutually exclusive with --raw, --dry-run, --bump-type, --release-from-pr.
+    #[arg(
+        long,
+        value_name = "VERSION",
+        conflicts_with_all = ["raw", "dry_run", "bump_type", "release_from_pr"]
+    )]
+    release_version: Option<String>,
 }
 
 fn log(msg: &str, is_raw: bool) {
@@ -175,6 +186,11 @@ fn run() -> BumperResult<ExitCode> {
     if let Some(pr_number) = args.release_from_pr {
         run_release(pr_number, output)?;
         return Ok(ExitCode::Ok);
+    }
+
+    // Handle --release-version: write an exact version, no bump/sync logic
+    if let Some(ref target_version_str) = args.release_version {
+        return run_release_version(target_version_str, &args, output);
     }
 
     // Handle --bump-type mode
@@ -485,6 +501,85 @@ fn run() -> BumperResult<ExitCode> {
             "{}",
             serde_json::to_string_pretty(&json).expect("failed to serialize JSON output")
         );
+    }
+
+    Ok(ExitCode::Ok)
+}
+
+/// Write an exact version to the package file(s), skipping all bump/sync logic.
+/// When --changelog is set, generates a CHANGELOG entry using commits since the
+/// last tag. No tag or push is created.
+fn run_release_version(
+    target_version_str: &str,
+    args: &Args,
+    output: Output,
+) -> BumperResult<ExitCode> {
+    let version = versioner::Version::parse(target_version_str)
+        .map_err(|_| BumperError::InvalidVersion(target_version_str.to_string()))?;
+
+    let mut config = Config::load();
+
+    if let Some(preset) = &args.preset {
+        config.preset = preset.clone();
+    }
+    if args.package_files.is_none() {
+        config.package_files = match config.preset.as_str() {
+            "rust" => vec!["Cargo.toml".to_string()],
+            "node" => vec!["package.json".to_string()],
+            "git" => vec![],
+            _ => vec!["package.json".to_string()],
+        };
+    }
+    if let Some(commit_prefix) = &args.commit_prefix {
+        config.commit_prefix = commit_prefix.clone();
+    }
+    if let Some(git_user_name) = &args.git_user_name {
+        config.git_user_name = git_user_name.clone();
+    }
+    if let Some(git_user_email) = &args.git_user_email {
+        config.git_user_email = git_user_email.clone();
+    }
+    let do_changelog = args.changelog;
+
+    git::set_git_config(&config.git_user_name, &config.git_user_email)?;
+
+    let strategy = load_strategy(&config);
+
+    // Write the exact version to package files
+    let updated_files = strategy.update_files(&version)?;
+    let mut all_updated_files = updated_files.clone();
+
+    // Generate changelog entry if requested
+    if do_changelog {
+        let last_tag = git::get_last_tag()?;
+        let commits = git::get_commits_since_tag(last_tag.as_deref())?;
+
+        if !commits.is_empty() {
+            changelog::generate_changelog_entry(&version, &commits, analyser::BumpType::None)?;
+            all_updated_files.push("CHANGELOG.md".to_string());
+        }
+    }
+
+    // Commit changes
+    if !all_updated_files.is_empty() {
+        git::commit_changes(
+            &version.to_string(),
+            &all_updated_files,
+            &config.commit_prefix,
+        )?;
+    }
+
+    // Emit output
+    if output == Output::Json {
+        let json = serde_json::json!({
+            "version": version.to_string(),
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json).expect("failed to serialize JSON output")
+        );
+    } else {
+        println!("{}", version);
     }
 
     Ok(ExitCode::Ok)
