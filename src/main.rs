@@ -42,6 +42,7 @@ Common Usage:
   grubble --dry-run          # Check if bump is needed (exit 0 if yes, 1 if no)
   grubble --bump-type        # Output bump type (major/minor/patch/none)
   grubble --preset rust      # Use Rust Cargo.toml versioning
+  grubble --preset python    # Use Python pyproject.toml versioning
   grubble --changelog        # Generate CHANGELOG.md
   grubble --initial-version 0.1.0  # Override baseline for first release"
 )]
@@ -80,7 +81,7 @@ struct Args {
     #[arg(long)]
     raw: bool,
 
-    /// Versioning strategy (node, rust, git)
+    /// Versioning strategy (node, rust, python, git)
     #[arg(long)]
     preset: Option<String>,
 
@@ -92,7 +93,7 @@ struct Args {
     #[arg(long)]
     commit_prefix: Option<String>,
 
-    /// Comma-separated list of files to update (for node/rust preset)
+    /// Comma-separated list of files to update (for node/rust/python preset)
     #[arg(long)]
     package_files: Option<String>,
 
@@ -231,6 +232,7 @@ fn run() -> BumperResult<ExitCode> {
         config.package_files = match config.preset.as_str() {
             "rust" => vec!["Cargo.toml".to_string()],
             "node" => vec!["package.json".to_string()],
+            "python" => vec!["pyproject.toml".to_string()],
             "git" => vec![],
             _ => vec!["package.json".to_string()],
         };
@@ -563,6 +565,7 @@ fn run_release_version(
         config.package_files = match config.preset.as_str() {
             "rust" => vec!["Cargo.toml".to_string()],
             "node" => vec!["package.json".to_string()],
+            "python" => vec!["pyproject.toml".to_string()],
             "git" => vec![],
             _ => vec!["package.json".to_string()],
         };
@@ -632,6 +635,7 @@ fn run_bump_type(args: &Args, output: Output) -> BumperResult<()> {
         config.package_files = match config.preset.as_str() {
             "rust" => vec!["Cargo.toml".to_string()],
             "node" => vec!["package.json".to_string()],
+            "python" => vec!["pyproject.toml".to_string()],
             "git" => vec![],
             _ => vec!["package.json".to_string()],
         };

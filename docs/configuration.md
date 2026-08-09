@@ -6,8 +6,8 @@ Grubble reads `.versionrc.json` from the project root. Flags and file values are
 
 | Option | CLI flag | Default | Description |
 | --- | --- | --- | --- |
-| `preset` | `--preset` | `git` | Versioning strategy: `git`, `rust`, or `node`. |
-| `packageFiles` | `--package-files` | `[]` | Comma-separated files to update (for `rust` / `node`). |
+| `preset` | `--preset` | `git` | Versioning strategy: `git`, `rust`, `node`, or `python`. |
+| `packageFiles` | `--package-files` | `[]` | Comma-separated files to update (for `rust` / `node` / `python`). |
 | `tagPrefix` | `--tag-prefix` | `v` | Prefix for git tags. |
 | `commitPrefix` | `--commit-prefix` | `chore: bump version` | Prefix for the bump commit message. |
 | `tag` | `--tag` | `false` | Create a git tag for the new version. |
@@ -29,6 +29,7 @@ The `preset` option controls what files grubble writes.
 - **`git`** (default) — tracks versions via tags only. No files are modified. Use this for monorepos or projects with their own versioning scheme.
 - **`rust`** — updates the `version` field in `Cargo.toml` and refreshes `Cargo.lock`. Pairs with `cargo publish`.
 - **`node`** — updates the `version` field in `package.json` and `package-lock.json`. Pairs with `npm publish`.
+- **`python`** — updates the PEP 621 `version` field in `pyproject.toml` (`[project]` / `[tool.poetry]`) and `__version__` / `VERSION` constant lines in listed package files. Pairs with `pip publish` / `twine upload`.
 
 When switching from `git` to a file-based preset, or when a package file is behind the latest tag, grubble first syncs the file to the tag (with a `chore: sync package version to v...` commit) and then proceeds with the normal bump.
 

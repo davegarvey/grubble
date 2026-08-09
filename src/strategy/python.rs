@@ -60,7 +60,8 @@ impl Strategy for PythonStrategy {
     fn update_files(&self, new_version: &Version) -> BumperResult<Vec<String>> {
         let mut updated = Vec::new();
         let version_field = Regex::new(r#"(?m)^version\s*=\s*"[^"]+""#).unwrap();
-        let version_constant = Regex::new(r#"(?m)^((?:__version__|VERSION))\s*=\s*"[^"]+""#).unwrap();
+        let version_constant =
+            Regex::new(r#"(?m)^((?:__version__|VERSION))\s*=\s*"[^"]+""#).unwrap();
 
         for file in self.package_files() {
             if !std::path::Path::new(&file).exists() {
@@ -71,9 +72,12 @@ impl Strategy for PythonStrategy {
             // the field regex requires a line-start `version` (never matches
             // `__version__` / `VERSION`), and the constant regex is
             // case-sensitive (never matches `version = ...` under `[project]`).
-            let new_content = version_field.replace(&content, format!(r#"version = "{}""#, new_version));
-            let new_content = version_constant
-                .replace(&new_content, format!(r#"$1 = "{}""#, new_version));
+            // replace_all so every matching line (e.g. both VERSION and
+            // __version__) is updated.
+            let new_content =
+                version_field.replace_all(&content, format!(r#"version = "{}""#, new_version));
+            let new_content =
+                version_constant.replace_all(&new_content, format!(r#"$1 = "{}""#, new_version));
 
             if new_content != content {
                 fs::write(&file, new_content.as_ref())?;

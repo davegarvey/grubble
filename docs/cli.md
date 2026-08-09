@@ -34,7 +34,7 @@ Every flag has a corresponding option in `.versionrc.json` (see [Configuration](
 | `--tag` | bool | `false` | Create a git tag for the new version. |
 | `--release-notes` (`-r`) | bool | `false` | Include release notes in the tag annotation. Requires `--tag`. |
 | `--raw` | bool | `false` | Print the new version string (dry run, no changes). |
-| `--preset` | string | `git` | Versioning strategy: `git`, `rust`, or `node`. |
+| `--preset` | string | `git` | Versioning strategy: `git`, `rust`, `node`, or `python`. |
 | `--tag-prefix` | string | `v` | Prefix for git tags. |
 | `--commit-prefix` | string | `chore: bump version` | Prefix for the bump commit message. |
 | `--package-files` | string | `""` | Comma-separated list of files to update. |
