@@ -9,6 +9,7 @@ pub trait Strategy {
 
 pub mod git;
 pub mod node;
+pub mod python;
 pub mod rust;
 
 pub fn load_strategy(config: &Config) -> Box<dyn Strategy> {
@@ -16,6 +17,7 @@ pub fn load_strategy(config: &Config) -> Box<dyn Strategy> {
         "node" => Box::new(node::NodeStrategy::new(config.clone())),
         "git" => Box::new(git::GitStrategy::new(config.clone())),
         "rust" => Box::new(rust::RustStrategy::new(config.clone())),
+        "python" => Box::new(python::PythonStrategy::new(config.clone())),
         _ => Box::new(git::GitStrategy::new(config.clone())),
     }
 }
