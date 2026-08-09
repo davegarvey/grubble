@@ -1,5 +1,28 @@
 # CI/CD Patterns
 
+## Bump and capture (no tag)
+
+Push a bump commit without creating a tag, and capture the version for later use. Recommended for the pre-merge phase of a release workflow — the tag lands on the merge commit, not the release branch:
+
+```bash
+# Gate first: a no-op run emits no version, so skip it up front
+if [ "$(grubble --bump-type --preset node --package-files package.json)" = "none" ]; then
+  echo "No bump needed"
+  exit 0
+fi
+
+# Read-only peek for the branch name (--raw makes no changes)
+VERSION=$(grubble --raw --preset node --package-files package.json)
+
+# Bump + commit + push the release branch. No --tag: the tag is created
+# later on the merge commit. --git-branch pushes with --set-upstream,
+# so it works on a fresh branch (plain --push requires an upstream).
+grubble --push --git-branch "release/v$VERSION" --output json \
+  --preset node --package-files package.json
+```
+
+Only files are written, committed, and pushed — no git tag is created. The bumped version is available as `$VERSION` (from `--raw`) and echoed via `--output json`, so the caller can use it for branch names (`release/v${VERSION}`), PR descriptions, or the later tag step. See [Best Practices](best-practices.md#releases) for why tagging on the merge commit matters.
+
 ## Skip the bump when nothing changed
 
 `grubble --bump-type` prints `major`, `minor`, `patch`, or `none`. Use it as a gate:

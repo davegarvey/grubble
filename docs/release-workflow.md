@@ -62,7 +62,9 @@ jobs:
           fetch-depth: 0
 
       # 1. Open or update the release PR. Bump + push the release branch
-      #    (no --tag) and open the PR. No auto-merge — a human reviews.
+      #    (no --tag; the Action's `version` output captures the bumped
+      #    version). See the Bump and capture recipe in ci-cd-patterns.md.
+      #    No auto-merge — a human reviews.
       - uses: davegarvey/grubble@v5
         with:
           push: true
