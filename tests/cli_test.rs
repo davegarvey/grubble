@@ -780,6 +780,194 @@ fn test_file_ahead_of_tag_succeeds_in_raw_mode() {
     assert_eq!(stdout.trim(), "5.0.0");
 }
 
+#[test]
+fn test_raw_with_python_preset_reads_pyproject_toml() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // PEP 621 layout — version does NOT match the git tag
+    std::fs::write(
+        dir.path().join("pyproject.toml"),
+        "[project]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+
+    cmd.arg("--raw");
+    cmd.arg("--preset");
+    cmd.arg("python");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // --raw --preset python must read from pyproject.toml, not the v1.0.0 git tag
+    assert_eq!(stdout.trim(), "0.1.0");
+}
+
+#[test]
+fn test_raw_with_python_preset_reads_version_constant() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // pyproject.toml with no version field + a __version__ constant in a module
+    std::fs::write(
+        dir.path().join("pyproject.toml"),
+        "[project]\nname = \"demo\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("demo.py"),
+        "__version__ = \"2.3.4\"\nVERSION = \"0.0.1\"\n",
+    )
+    .unwrap();
+
+    cmd.arg("--raw");
+    cmd.arg("--preset");
+    cmd.arg("python");
+    cmd.arg("--package-files");
+    cmd.arg("pyproject.toml,demo.py");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Falls back to the __version__ constant (preferred over VERSION)
+    assert_eq!(stdout.trim(), "2.3.4");
+}
+
+#[test]
+fn test_python_preset_bumps_pyproject_and_constant() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    std::fs::write(
+        dir.path().join("pyproject.toml"),
+        "[project]\nname = \"demo\"\nversion = \"1.0.0\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("demo.py"),
+        "VERSION = \"1.0.0\"\n__version__ = \"1.0.0\"\n",
+    )
+    .unwrap();
+
+    // Add a fix commit so the bump step actually runs
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "fix: resolve bug"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create fix commit");
+
+    cmd.arg("--preset");
+    cmd.arg("python");
+    cmd.arg("--package-files");
+    cmd.arg("pyproject.toml,demo.py");
+    cmd.arg("--tag");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_eq!(output.status.code(), Some(0));
+
+    // Both the PEP 621 field and both constant styles must be bumped
+    let pyproject = std::fs::read_to_string(dir.path().join("pyproject.toml")).unwrap();
+    assert!(
+        pyproject.contains("version = \"1.0.1\""),
+        "expected pyproject.toml bumped to 1.0.1, got: {}",
+        pyproject
+    );
+    let module = std::fs::read_to_string(dir.path().join("demo.py")).unwrap();
+    assert!(
+        module.contains("VERSION = \"1.0.1\"") && module.contains("__version__ = \"1.0.1\""),
+        "expected constants bumped to 1.0.1, got: {}",
+        module
+    );
+
+    // Tag created and bump commit uses the standard prefix
+    let tags_output = Command::new("git")
+        .args(["tag", "-l"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to list tags");
+    let tags = String::from_utf8_lossy(&tags_output.stdout);
+    assert!(
+        tags.contains("v1.0.1"),
+        "expected v1.0.1 tag, got: {}",
+        tags
+    );
+
+    let log_output = Command::new("git")
+        .args(["log", "--oneline", "-1"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to read git log");
+    let log = String::from_utf8_lossy(&log_output.stdout);
+    assert!(
+        log.contains("chore: bump version to 1.0.1"),
+        "expected standard bump commit message, got: {}",
+        log
+    );
+}
+
+#[test]
+fn test_python_file_behind_tag_syncs() {
+    // The sync-to-tag path must apply to the python preset like rust/node
+    let (dir, mut cmd) = setup_test_repo();
+
+    // pyproject.toml is BEHIND the v1.0.0 tag — should sync up
+    std::fs::write(
+        dir.path().join("pyproject.toml"),
+        "[project]\nversion = \"0.5.0\"\n",
+    )
+    .unwrap();
+
+    // Add a fix commit so the bump step actually runs
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "fix: something"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create fix commit");
+
+    cmd.arg("--preset");
+    cmd.arg("python");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    // Sync-up must succeed; the file is then bumped from the tag version
+    assert_eq!(output.status.code(), Some(0));
+
+    let pyproject = std::fs::read_to_string(dir.path().join("pyproject.toml")).unwrap();
+    assert!(
+        pyproject.contains("1.0.1"),
+        "expected file synced+bumped to 1.0.1, got: {}",
+        pyproject
+    );
+}
+
+#[test]
+fn test_python_file_ahead_of_tag_fails() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    // Add a fix commit so a bump would otherwise be triggered
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "fix: something"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create fix commit");
+
+    // pyproject.toml is AHEAD of the v1.0.0 tag
+    std::fs::write(
+        dir.path().join("pyproject.toml"),
+        "[project]\nversion = \"5.0.0\"\n",
+    )
+    .unwrap();
+
+    cmd.arg("--preset");
+    cmd.arg("python");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    // Must fail (not silently use the file version as the bump base)
+    assert_ne!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("5.0.0"),
+        "expected file version in error, got: {}",
+        stderr
+    );
+}
+
 /// Set up a test repo that has a local bare "remote" added as origin.
 /// Returns (work_dir, remote_dir, grubble_command) where the grubble command
 /// is pre-configured to run in work_dir.

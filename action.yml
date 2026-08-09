@@ -28,7 +28,7 @@ inputs:
     required: false
     default: 'false'
   preset:
-    description: 'Versioning strategy (node, rust, git)'
+    description: 'Versioning strategy (node, rust, python, git)'
     required: false
     default: ''
   tag-prefix:
