@@ -2,6 +2,27 @@
 
 Grubble supports two release workflows. The **release-please flow** is recommended for any project on a protected branch.
 
+## Projects Without a Supported Manifest
+
+The default `git` preset is the recommended strategy when Grubble does not have a file-backed preset for the project's language. This includes projects such as Swift, Go, and other languages not listed in the [`preset` options](configuration.md#versioning-strategies). Grubble uses `vX.Y.Z` Git tags as the source of truth and does not modify the project's package or application files.
+
+The release-PR setup for a tag-based project can use the Action like this:
+
+```yaml
+- uses: davegarvey/grubble@v5
+  with:
+    push: true
+    create-pr: true
+    preset: git
+    changelog: true
+```
+
+Do not set `tag: true` in the pre-merge step. The release branch should contain the CHANGELOG change, while the version tag is created later on the merged `main` commit. The packaging workflow can read the tag with `${GITHUB_REF_NAME#v}` and pass that value to the project's build script.
+
+If a separate tag-triggered workflow owns the binaries and GitHub Release, use `release-from-pr` only to resolve the merged PR, create the exact `vX.Y.Z` tag at `merge_commit_sha`, and omit the `gh release create` call from the version workflow. Let the tag workflow create the release once its assets are ready. Create the tag with a PAT or GitHub App token when a new workflow must run: workflows created with the default `GITHUB_TOKEN` do not trigger another workflow run. Alternatively, explicitly dispatch the asset workflow after creating the tag.
+
+The existing Grubble `version.yml` is a repository-specific Rust example, not a drop-in workflow for every language. Keep its release-PR and `release-from-pr` structure, but replace Rust package, test, build, and publish steps with the project's own workflow.
+
 ## Release-Please Flow (Recommended)
 
 This is the same pattern used by [`semantic-release`](https://github.com/semantic-release/semantic-release) (23.9k ⭐) and [`googleapis/release-please`](https://github.com/googleapis/release-please) (7.2k ⭐, Google-maintained): open a release PR, let a human merge it, then create the tag on the merge commit.

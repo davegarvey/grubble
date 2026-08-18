@@ -8,11 +8,14 @@
 
 Automatic semantic versioning from conventional commits. Designed to be driven by AI-generated commit messages.
 
+Grubble uses Git tags as the version source by default. The built-in file-backed presets are `rust`, `node`, and `python`; projects in other languages should use the default `git` preset and pass the tag-derived version to their own build or packaging scripts.
+
 ## Why
 
 Grubble reads your commit history, applies conventional commit rules, and bumps the version in one command:
 
 - `feat:` → minor, `fix:` → patch, `!` / `BREAKING CHANGE` → major
+- Uses `vX.Y.Z` Git tags as the default version source
 - Optionally writes the new version to `Cargo.toml` or `package.json`
 - Optionally generates a `CHANGELOG.md` (Keep a Changelog format)
 - Cuts and pushes tags, including floating `v4` / `v4.1` tags for GitHub Actions
