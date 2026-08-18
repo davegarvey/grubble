@@ -1,6 +1,6 @@
 # Configuration
 
-Grubble reads `.versionrc.json` from the project root. Flags and file values are merged, with flags winning.
+Grubble reads `.versionrc.json` from the project root. Flags and file values are merged, with flags winning. Git tags are the default version source.
 
 ## Options
 
@@ -26,10 +26,21 @@ If your repo has a local `user.name` / `user.email` set, grubble uses those and 
 
 The `preset` option controls what files grubble writes.
 
-- **`git`** (default) — tracks versions via tags only. No files are modified. Use this for monorepos or projects with their own versioning scheme.
+- **`git`** (default and fallback) — tracks versions via `vX.Y.Z` tags only. No files are modified. Use this for monorepos, projects with their own versioning scheme, and languages that do not have a built-in Grubble preset. Pass the tag-derived version to the project's build or packaging script when an artifact needs an embedded version.
 - **`rust`** — updates the `version` field in `Cargo.toml` and refreshes `Cargo.lock`. Pairs with `cargo publish`.
 - **`node`** — updates the `version` field in `package.json` and `package-lock.json`. Pairs with `npm publish`.
 - **`python`** — updates the PEP 621 `version` field in `pyproject.toml` (`[project]` / `[tool.poetry]`) and `__version__` / `VERSION` constant lines in listed package files. Pairs with `pip publish` / `twine upload`.
+
+For a project without a supported package manifest, omit `preset` or set it explicitly to `git`:
+
+```json
+{
+  "preset": "git",
+  "changelog": true
+}
+```
+
+`changelog` is optional for direct tag releases. Enable it for the release-PR flow so the release branch contains a tracked change even when Grubble does not update a package file. Keep `push`, `tag`, and floating-tag options out of shared configuration unless every invocation is intended to perform those actions; set them in the workflow instead.
 
 When switching from `git` to a file-based preset, or when a package file is behind the latest tag, grubble first syncs the file to the tag (with a `chore: sync package version to v...` commit) and then proceeds with the normal bump.
 
