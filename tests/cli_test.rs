@@ -832,6 +832,66 @@ fn test_raw_with_python_preset_reads_version_constant() {
 }
 
 #[test]
+fn test_raw_with_python_preset_reads_configured_package_files_array() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    std::fs::write(
+        dir.path().join("pyproject.toml"),
+        "[project]\nname = \"demo\"\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(dir.path().join("agentflow")).unwrap();
+    std::fs::write(
+        dir.path().join("agentflow/main.py"),
+        "__version__ = \"2.3.4\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join(".versionrc.json"),
+        r#"{
+            "preset": "python",
+            "packageFiles": ["pyproject.toml", "agentflow/main.py"]
+        }"#,
+    )
+    .unwrap();
+
+    cmd.arg("--raw");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "2.3.4");
+}
+
+#[test]
+fn test_validate_config_reports_invalid_json() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    std::fs::write(
+        dir.path().join(".versionrc.json"),
+        "{\"packageFiles\": \"main.py\"}",
+    )
+    .unwrap();
+
+    cmd.arg("--validate-config");
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(".versionrc.json") && stderr.contains("expected a sequence"),
+        "expected config parse details, got: {}",
+        stderr
+    );
+}
+
+#[test]
 fn test_python_preset_bumps_pyproject_and_constant() {
     let (dir, mut cmd) = setup_test_repo();
 

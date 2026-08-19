@@ -24,7 +24,7 @@ Make sure grubble is on `PATH`. If you used `cargo install --root <dir>`, add `<
 
 **Invalid config file**
 
-Empty or invalid `.versionrc.json` falls back to defaults with a warning. Run grubble once to see the warning, then fix the JSON.
+Empty or invalid `.versionrc.json` falls back to defaults with a warning during normal runs. The warning includes the JSON parse error. In CI, run `grubble --validate-config` to fail fast before a release if the file is invalid.
 
 **Package file not found**
 

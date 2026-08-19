@@ -18,10 +18,11 @@ grubble --git-branch release/v0.35.0 --force-push  # same, with --force-with-lea
 grubble --changelog-entry             # print the latest entry from CHANGELOG.md
 grubble --release-from-pr 79          # resolve a merged release PR to a tag spec (for canonical release-please workflows)
 grubble --initial-version 0.1.0       # override baseline version for first-release detection
-grubble --help               # full flag reference
+grubble --validate-config             # validate .versionrc.json without making changes
+grubble --help                        # full flag reference
 ```
 
-Every flag has a corresponding option in `.versionrc.json` (see [Configuration](configuration.md)). CLI flags override file values.
+Configuration-backed flags have corresponding options in `.versionrc.json` (see [Configuration](configuration.md)); CLI flags override file values. Read-only mode flags such as `--validate-config` are CLI-only.
 
 ## Flag Reference
 
@@ -38,6 +39,7 @@ Every flag has a corresponding option in `.versionrc.json` (see [Configuration](
 | `--tag-prefix` | string | `v` | Prefix for git tags. |
 | `--commit-prefix` | string | `chore: bump version` | Prefix for the bump commit message. |
 | `--package-files` | string | `""` | Comma-separated list of files to update. |
+| `--validate-config` | bool | `false` | Validate `.versionrc.json` and exit without modifying files. |
 | `--git-user-name` | string | `github-actions[bot]` | Identity used for the bump commit. |
 | `--git-user-email` | string | `41898282+github-actions[bot]@users.noreply.github.com` | Email used for the bump commit. |
 | `--update-major-tag` | bool | `false` | Maintain a floating `v4` tag pointing to the latest `v4.x.x`. |
