@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.1] - 2026-08-19
+
+### Changed
+
+- clarify default git preset workflow (#138)
+- fix bump-and-capture recipe for fresh release branches (#137)
+
+### Fixed
+
+- honor configured package files (#139)
+
 ## [5.8.0] - 2026-08-09
 
 ### Added
