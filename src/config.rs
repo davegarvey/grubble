@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use crate::error::{BumperError, BumperResult};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
@@ -121,15 +123,60 @@ impl Config {
         Self::load_from_path(".versionrc.json")
     }
 
+    /// Load the project configuration and fail if the file is invalid.
+    ///
+    /// A missing configuration file is valid and uses the built-in defaults.
+    /// This strict variant is used by CI validation, while normal runs retain
+    /// the historical fallback behavior in `load`.
+    pub fn load_strict() -> BumperResult<Self> {
+        Self::load_strict_from_path(".versionrc.json")
+    }
+
     pub fn load_from_path<P: AsRef<Path>>(path: P) -> Self {
-        if let Ok(content) = fs::read_to_string(path) {
-            if let Ok(user_config) = serde_json::from_str::<Config>(&content) {
-                return user_config;
-            } else {
-                eprintln!("Warning: Invalid .versionrc.json file, using default config");
+        match Self::load_strict_from_path(path.as_ref()) {
+            Ok(config) => config,
+            Err(error) => {
+                eprintln!("Warning: {}; using default config", error);
+                Config::default()
             }
         }
+    }
 
-        Config::default()
+    fn load_strict_from_path<P: AsRef<Path>>(path: P) -> BumperResult<Self> {
+        let path = path.as_ref();
+        match fs::read_to_string(path) {
+            Ok(content) => serde_json::from_str::<Config>(&content).map_err(|error| {
+                BumperError::InvalidConfig(format!("{}: {}", path.display(), error))
+            }),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
+            Err(error) => Err(error.into()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn loads_package_files_array_from_config() {
+        let config_file = NamedTempFile::new().unwrap();
+        fs::write(
+            config_file.path(),
+            r#"{
+                "preset": "python",
+                "packageFiles": ["pyproject.toml", "agentflow/main.py"]
+            }"#,
+        )
+        .unwrap();
+
+        let config = Config::load_from_path(config_file.path());
+
+        assert_eq!(config.preset, "python");
+        assert_eq!(
+            config.package_files,
+            vec!["pyproject.toml", "agentflow/main.py"]
+        );
     }
 }

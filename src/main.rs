@@ -142,6 +142,10 @@ struct Args {
     #[arg(long)]
     changelog_entry: bool,
 
+    /// Validate .versionrc.json and exit without making changes
+    #[arg(long)]
+    validate_config: bool,
+
     /// Write an exact version to the package file(s), skipping all bump/sync
     /// logic. When combined with --changelog, generates a CHANGELOG entry
     /// using commits since the last tag. No tag or push is created.
@@ -194,6 +198,13 @@ fn run() -> BumperResult<ExitCode> {
     let is_raw = args.raw;
     let output = args.output;
 
+    // Validate configuration without running any git or versioning logic.
+    if args.validate_config {
+        Config::load_strict()?;
+        println!("Configuration is valid");
+        return Ok(ExitCode::Ok);
+    }
+
     // Handle --release-from-pr: resolves a merged release PR to a tag spec.
     // This is used by the version workflow after a release PR is merged.
     if let Some(pr_number) = args.release_from_pr {
@@ -228,7 +239,7 @@ fn run() -> BumperResult<ExitCode> {
     if let Some(preset) = args.preset {
         config.preset = preset;
     }
-    if args.package_files.is_none() {
+    if args.package_files.is_none() && config.package_files.is_empty() {
         config.package_files = match config.preset.as_str() {
             "rust" => vec!["Cargo.toml".to_string()],
             "node" => vec!["package.json".to_string()],
@@ -561,7 +572,7 @@ fn run_release_version(
     if let Some(preset) = &args.preset {
         config.preset = preset.clone();
     }
-    if args.package_files.is_none() {
+    if args.package_files.is_none() && config.package_files.is_empty() {
         config.package_files = match config.preset.as_str() {
             "rust" => vec!["Cargo.toml".to_string()],
             "node" => vec!["package.json".to_string()],
@@ -631,7 +642,7 @@ fn run_bump_type(args: &Args, output: Output) -> BumperResult<()> {
     if let Some(preset) = &args.preset {
         config.preset = preset.clone();
     }
-    if args.package_files.is_none() {
+    if args.package_files.is_none() && config.package_files.is_empty() {
         config.package_files = match config.preset.as_str() {
             "rust" => vec!["Cargo.toml".to_string()],
             "node" => vec!["package.json".to_string()],

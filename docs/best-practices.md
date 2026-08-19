@@ -20,6 +20,7 @@ Patterns and pitfalls, distilled from the release-please / semantic-release play
 
 - **Use `--raw --dry-run` (or `--bump-type`) to gate bumps in CI, not exit codes.** `--dry-run` always exits 0 in v5+, so it can no longer be used as a "would a bump happen?" signal. Use `--raw --dry-run` (returns just the next version) and compare to the current `Cargo.toml` / `package.json` version, or use `--bump-type` (returns `major` / `minor` / `patch` / `none`) for a clean gate.
 - **Use `--output json` from CI scripts that need to parse the result.** All modes accept `--output json`. In bump mode it emits `{"version": "x.y.z"}` after files are written, so you can get the actual version without grepping package files. Avoid shell-substring matching on human-readable output.
+- **Validate shared configuration before releasing.** Run `grubble --validate-config` in CI so an invalid `.versionrc.json` fails with the parser error instead of falling back to defaults.
 - **Pin the major version (`@v5`) unless you want the release frozen.** The floating major tag follows the latest release in its range. If you want a frozen release, pin to a specific version (`@v5.2.2`).
 
 ## Commits

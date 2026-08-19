@@ -7,7 +7,7 @@ Grubble reads `.versionrc.json` from the project root. Flags and file values are
 | Option | CLI flag | Default | Description |
 | --- | --- | --- | --- |
 | `preset` | `--preset` | `git` | Versioning strategy: `git`, `rust`, `node`, or `python`. |
-| `packageFiles` | `--package-files` | `[]` | Comma-separated files to update (for `rust` / `node` / `python`). |
+| `packageFiles` | `--package-files` | `[]` | JSON array of files to update (for `rust` / `node` / `python`). The CLI flag accepts a comma-separated list. |
 | `tagPrefix` | `--tag-prefix` | `v` | Prefix for git tags. |
 | `commitPrefix` | `--commit-prefix` | `chore: bump version` | Prefix for the bump commit message. |
 | `tag` | `--tag` | `false` | Create a git tag for the new version. |
@@ -19,6 +19,17 @@ Grubble reads `.versionrc.json` from the project root. Flags and file values are
 | `gitUserName` | `--git-user-name` | `github-actions[bot]` | Identity used for the bump commit when no local git user is configured. |
 | `gitUserEmail` | `--git-user-email` | `41898282+github-actions[bot]@users.noreply.github.com` | Email used for the bump commit when no local git user is configured. |
 | `types` | — | see [Commit Types](#commit-types) | Per-type bump behavior. Valid values: `major`, `minor`, `patch`, `none`. |
+
+`packageFiles` uses a JSON array in `.versionrc.json`:
+
+```json
+{
+  "preset": "python",
+  "packageFiles": ["pyproject.toml", "agentflow/main.py"]
+}
+```
+
+The equivalent CLI input is `--package-files pyproject.toml,agentflow/main.py`.
 
 If your repo has a local `user.name` / `user.email` set, grubble uses those and ignores `gitUserName` / `gitUserEmail`. In CI, set these to match your bot user (e.g. `github-actions[bot]`).
 
