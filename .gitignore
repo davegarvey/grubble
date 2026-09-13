@@ -25,6 +25,9 @@ logs/
 *.swp
 *~
 
+# Local Git worktrees
+/.worktrees/
+
 # Coverage (if any)
 coverage/
 *.lcov
