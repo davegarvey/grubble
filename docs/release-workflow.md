@@ -147,11 +147,12 @@ jobs:
 
 ### Reference implementation: grubble's own version.yml
 
-The repo's own release workflow (`.github/workflows/version.yml`) is the canonical example. It runs the Bump step (`grubble --raw --dry-run`) to compute the next version, opens or updates the release PR (with auto-merge enabled when branch protection allows), and on the next push after merge runs `--release-from-pr` to resolve the merged PR and create the tag + GitHub Release on the merge commit via `gh api`.
+The repo's own release workflow (`.github/workflows/version.yml`) is the canonical example. It builds grubble from source, detects and releases a merged PR, runs the Bump step after Release so newly-created tags are visible, and opens or updates a release PR with `--release-version` and `--output json`. Its configured auto-merge path uses a token that can trigger the next workflow run; consumers may instead leave the PR for human review. The post-merge step resolves the PR and creates the tag + GitHub Release on the merge commit via `gh api`.
 
 Key patterns from the reference implementation:
-- **Branch name follows file content, not dry-run.** The Open step runs grubble on a temporary branch first, reads the actual version from `--output json`, then names the branch `release/v<actual_version>`. This avoids mismatches when grubble's file-behind-tag sync logic produces a different version than the dry-run predicted.
-- **Stale PR cleanup.** If the sync logic causes the actual version to diverge from the dry-run version, the old release PR is closed and the stale branch is deleted so human reviewers aren't confused.
+- **Exact release version.** The Open step uses `--release-version` with the Bump step's version, so the package-file version and release branch name cannot diverge through sync logic.
+- **Tag freshness.** The Bump step fetches tags after Release, and the Open step fetches them again before generating the CHANGELOG entry.
+- **Changelog-derived release notes.** The PR body comes from `grubble --changelog-entry` and becomes the GitHub Release body after merge.
 - **`--output json` for version extraction.** The workflow uses `jq -r '.version'` from grubble's JSON output instead of grepping package files.
 
 ## Direct-Push Style (Alternative)

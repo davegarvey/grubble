@@ -1,10 +1,6 @@
-# bump-base-validation Specification
+# bump-base-validation Specification (Delta)
 
-## Purpose
-
-Defines the safety check that keeps package-file versions aligned with the latest release tag before a writable bump is performed.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Reject file version ahead of latest tag
 The `grubble` CLI SHALL exit with a non-zero code and a descriptive error when the package file's version is strictly greater than the latest tag's version (and `preset` is not `git`). The error SHALL name both the file version and the tag version, and SHALL state at least one way to align them.

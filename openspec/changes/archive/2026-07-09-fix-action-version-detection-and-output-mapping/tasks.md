@@ -12,5 +12,8 @@
 ## 3. Verify
 
 - [x] 3.1 Run `actionlint` or manual review on the updated `action.yml` for syntax errors
-- [ ] 3.2 Test the action end-to-end on a repo with no tags and `preset: node` — verify version is read correctly, bump succeeds, outputs are set
-- [ ] 3.3 Test on a repo with existing tags — verify no regression in version detection
+
+## Deferred follow-up
+
+- A dedicated end-to-end fixture for an untagged Node repository was not added; the preset-aware shell path shipped in PR #49 and was superseded by the more robust resolution in PR #92.
+- A dedicated existing-tag action fixture remains optional because the resolution path is covered by the released action implementation and subsequent releases.

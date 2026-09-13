@@ -4,9 +4,9 @@
 Defines the canonical release-please-style workflow for grubble's own repo: every push to `main` triggers a dry-run version computation. If a bump is needed, a release PR is opened on a `release/v<version>` branch. A human reviews and merges the PR. The next push to `main` detects the merged release PR and creates the tag + GitHub Release on the main merge commit via the GitHub API. This matches the `semantic-release` and `googleapis/release-please` patterns.
 ## Requirements
 ### Requirement: version.yml opens a release PR on every push that warrants a bump
-The workflow steps SHALL run in this order: (1) **Detect merged release PR**, (2) **Release merged PR** (create tag + GitHub Release), (3) **Bump (dry-run)** (compute next version), (4) **Open or update release PR** (create/update the branch). The Bump step MUST run AFTER the Release step so that any tag just created by the Release step is visible to the dry-run analysis. Without this ordering, the dry-run would re-analyze commits already included in the just-released tag, producing a stale next-version.
+The workflow steps SHALL run in this order: (1) detect a merged release PR, (2) release the merged PR, (3) compute the next version with a dry run, and (4) open or update a release PR when a bump is needed. The Bump step SHALL run after the Release step so any tag just created by the Release step is visible to version analysis. The release PR's head branch SHALL be named `release/v<new_version>` and SHALL contain a single commit with the version bump and CHANGELOG entry. The Open step SHALL write the exact dry-run version with `grubble --release-version --output json`, parse the returned version, and use it for the branch and pull-request metadata. The git tag SHALL NOT be created on the release branch; the tag is created on the main merge commit after the PR is merged.
 
-The Release step is idempotent and uses the GitHub API (`gh api`). The Bump step runs for every push (unless `skip_version_bump` is set). The Open step is gated on the Bump step's `changed` output. This ordering handles the "quiet period" correctly: if v5.2.2 was released long ago and a new `fix:` lands on main, the Detect step still finds the old v5.2.2 release PR (`merged=true`), the Release step is a no-op (tag exists), and after the Bump step computes v5.2.3, the Open step opens a fresh release PR for v5.2.3.
+The Release step SHALL be idempotent and use the GitHub API (`gh api`). The Bump step SHALL run for every push unless `skip_version_bump` is set. The Open step SHALL be gated on the Bump step's `changed` output and its pull-request body SHALL contain the CHANGELOG entry from `grubble --changelog-entry`. This ordering handles the quiet period correctly: if v5.2.2 was released long ago and a new `fix:` lands on main, the Detect step still finds the old v5.2.2 release PR (`merged=true`), the Release step is a no-op because the tag exists, and after the Bump step computes v5.2.3, the Open step opens a fresh release PR for v5.2.3.
 
 The version SHALL be written using `grubble --release-version`, which writes the exact dry-run version without forward-bump or sync logic. The git tag SHALL NOT be created on the release branch — the tag is created on the main merge commit after the PR is merged.
 
@@ -14,6 +14,7 @@ The version SHALL be written using `grubble --release-version`, which writes the
 - **WHEN** a push to `main` contains one or more `feat:` or `feat!:` commits since the last release
 - **THEN** the workflow SHALL open a release PR titled `Release v<new_version>` with the version set commit on the `release/v<new_version>` branch
 - **AND** the version written to Cargo.toml SHALL exactly match the dry-run prediction
+- **AND** the PR body SHALL contain the full CHANGELOG entry for this version
 
 #### Scenario: no conventional commits since the last release
 - **WHEN** a push to `main` contains no `feat:`, `fix:`, or breaking-change commits since the last release
@@ -22,6 +23,7 @@ The version SHALL be written using `grubble --release-version`, which writes the
 #### Scenario: release PR already exists for this version
 - **WHEN** a release PR for `release/v<new_version>` is already open (e.g., from a previous push)
 - **THEN** the workflow SHALL update the existing PR's branch with the latest version set commit (force-push the branch)
+- **AND** the PR body SHALL contain the latest CHANGELOG entry for the version
 
 #### Scenario: step ordering prevents redundant bump after release PR merge
 - **GIVEN** a release PR for v5.5.0 was just auto-merged, creating commit `C` on main
@@ -44,12 +46,16 @@ The version SHALL be written using `grubble --release-version`, which writes the
 - **WHEN** the human merges the v5.2.3 release PR
 - **THEN** the next push to `main` SHALL detect the merged v5.2.3 release PR and the Release step SHALL create the `v5.2.3` tag and GitHub Release on the merge commit
 
-### Requirement: release PR is not auto-merged
-The workflow SHALL NOT call `gh pr merge --auto` or otherwise enable auto-merge on the release PR. The release PR SHALL remain open until a human merges it. This matches the canonical release-please pattern and is the security model: a release is a high-impact event and requires human review.
+### Requirement: release PR uses an explicit merge policy
+The workflow SHALL open a release PR as the review gate and SHALL use either a human merge or an explicitly configured auto-merge path. If auto-merge is enabled, the workflow SHALL use a token capable of triggering the post-merge workflow; it SHALL NOT rely on a `GITHUB_TOKEN` event that cannot trigger the next run. The release PR SHALL remain reviewable until its configured merge policy completes.
 
-#### Scenario: workflow opens release PR without auto-merge
-- **WHEN** the workflow opens a release PR
-- **THEN** the PR's `auto_merge` flag SHALL remain unset; the PR is open and awaits human review
+#### Scenario: workflow opens a release PR for human review
+- **WHEN** auto-merge is not configured or branch protection requires human approval
+- **THEN** the PR SHALL remain open and await a human merge
+
+#### Scenario: workflow uses configured auto-merge
+- **WHEN** auto-merge is configured and branch protection permits it
+- **THEN** the workflow SHALL enable auto-merge with a token that can trigger the post-merge workflow
 
 ### Requirement: workflow tags the merge commit on the next run after a release PR is merged
 On every push to `main`, the workflow SHALL detect the most recent merged release PR whose head branch matches `^release/v\d+\.\d+\.\d+$`. When such a merged PR is found, the workflow SHALL:
@@ -73,6 +79,22 @@ On every push to `main`, the workflow SHALL detect the most recent merged releas
 #### Scenario: tag creation is idempotent
 - **WHEN** the `v<version>` tag already exists on the correct commit
 - **THEN** the workflow SHALL detect this and SHALL NOT fail or re-create the tag
+
+#### Scenario: release PR body is used as release notes
+- **WHEN** the workflow creates a GitHub Release for a merged release PR
+- **THEN** the release body SHALL be set to the PR body, which contains the CHANGELOG entry for that version
+
+### Requirement: release workflow has no external AI dependency for release notes
+The version workflow SHALL NOT depend on any external service (OpenAI, npm, etc.) for generating release notes. The release body SHALL be derived from the CHANGELOG.md content generated by grubble as part of the release PR. No `create-release` job or equivalent SHALL exist.
+
+#### Scenario: release notes do not require an API key
+- **WHEN** the release workflow creates a release
+- **THEN** no API key SHALL be required for release notes generation
+
+#### Scenario: build-release and publish-crate do not depend on an AI notes job
+- **WHEN** the release workflow runs the build and publish jobs
+- **THEN** `build-release` SHALL depend on `version` and `test` only
+- **AND** `publish-crate` SHALL depend on `test` and `build-release` only
 
 ### Requirement: v<major> floating tag follows the latest release
 The workflow SHALL keep the `v<major>` floating tag in sync with the latest release. After creating a `v<version>` tag for a release, the workflow SHALL update `v<major>` to point to the same commit.
