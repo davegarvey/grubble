@@ -1,7 +1,9 @@
 # preset-aware-version-detection Specification
 
 ## Purpose
-TBD - created by archiving change fix-action-version-detection-and-output-mapping. Update Purpose after archive.
+
+Defines how the GitHub Action reads the current package version for each supported preset and exposes the previous version to callers.
+
 ## Requirements
 ### Requirement: Get current version via node preset
 The "Get current version" step SHALL use `node -p "require('./package.json').version"` when `preset: node` is configured, instead of `./grubble --raw`. If the command fails (e.g., `package.json` not found), the version SHALL fall back to `0.0.0`.
@@ -50,4 +52,3 @@ The "Run bump" step SHALL write `previous_version=...` to its `$GITHUB_OUTPUT`, 
 #### Scenario: previous_version equals the pre-bump version
 - **WHEN** the pre-bump version was `0.1.0` and the new version is `1.0.0`
 - **THEN** the `previous-version` output of the action SHALL be `0.1.0`
-

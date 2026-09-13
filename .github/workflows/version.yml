@@ -313,7 +313,7 @@ jobs:
         CHANGELOG_BODY=$(./target/release/grubble --changelog-entry || echo "")
 
         if gh pr view "${BRANCH}" >/dev/null 2>&1; then
-          echo "PR already exists for ${BRANCH}; branch was force-pushed."
+          echo "PR already exists for ${BRANCH}; the workflow-owned branch was refreshed with --force-with-lease."
           gh pr edit "${BRANCH}" \
             --title "Release v${VERSION}" \
             --body "${CHANGELOG_BODY}"

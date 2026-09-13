@@ -20,7 +20,7 @@
 - [x] 4.1 Run `cargo fmt --all` and `cargo fmt --all -- --check`.
 - [x] 4.2 Run `cargo clippy --all-targets --all-features -- -D warnings` and confirm clean.
 - [x] 4.3 Confirm the OpenSpec change validates: `openspec validate bump-base-validation`.
-- [ ] 4.4 Open a PR; let `ci.yml` and `version.yml` drive the release. The PR's commits use the `fix:` prefix so the workflow bumps to v5.0.1 automatically (no manual `Cargo.toml` bump in the PR).
+- [x] 4.4 Open a PR; let `ci.yml` and `version.yml` drive the release. PR #57 was merged with the `fix:` prefix, and the workflow produced v5.0.1 without a manual `Cargo.toml` bump.
 
 ## 5. Post-merge verification
 

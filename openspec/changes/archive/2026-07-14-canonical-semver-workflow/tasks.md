@@ -32,9 +32,12 @@
 - [x] 4.3 Verified end-to-end with v5.2.1 (PR #76) and v5.2.2 (PR #79) — release PRs were opened by the workflow, the `--raw --dry-run` capture was fixed in PR #81
 - [x] 4.4 Manually merged release PRs (squash for v5.2.1, merge commit for v5.2.2). The next push to main triggered the post-merge step which created the tag and GitHub Release on the merge commit
 - [x] 4.5 Tags v5.2.0/v5.2.1/v5.2.2 all reachable from main on the correct merge commits; v5 floating tag on the latest (v5.2.2); GitHub releases v5.2.0/v5.2.1/v5.2.2 all published; crates.io has v5.2.2 as the default and max version
-- [x] 4.6 Archive this OpenSpec change (in progress)
+- [x] 4.6 Archive this OpenSpec change.
 
 ## 5. (Optional, follow-up) Add a `release` subcommand test suite
 
 - [x] 5.1 Unit tests for `parse_release_branch` (4 cases: valid, missing v prefix, missing v<digit>, wrong prefix)
-- [ ] 5.2 CLI integration tests for `--release-from-pr` (success, PR not merged, branch mismatch, no token) — deferred; unit tests cover the parser, and the end-to-end verification (task 4.4) covers the GitHub API integration
+
+## Deferred follow-up
+
+- CLI integration tests for `--release-from-pr` remain deferred; parser unit tests and the end-to-end release verification cover the shipped behavior.
