@@ -28,6 +28,9 @@ logs/
 # Local Git worktrees
 /.worktrees/
 
+# Local Tala session state
+/.tala/
+
 # Coverage (if any)
 coverage/
 *.lcov
