@@ -23,7 +23,7 @@ enum ExitCode {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "grubble")]
+#[command(name = "grubble", version)]
 #[command(
     about = "Automatic semantic versioning based on conventional commits",
     long_about = "Grubble - Automatic Semantic Versioning

@@ -38,6 +38,23 @@ fn get_grubble_bin() -> String {
     panic!("Could not find grubble binary. Build with 'cargo build' first.");
 }
 
+#[test]
+fn test_version_flags() {
+    for flag in ["--version", "-V"] {
+        let output = Command::new(get_grubble_bin())
+            .arg(flag)
+            .output()
+            .expect("Failed to run grubble");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(
+            stdout.trim(),
+            format!("grubble {}", env!("CARGO_PKG_VERSION"))
+        );
+    }
+}
+
 fn setup_test_repo() -> (TempDir, Command) {
     let temp_dir = TempDir::new().unwrap();
 
