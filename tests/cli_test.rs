@@ -630,6 +630,34 @@ fn test_node_preset_preserves_key_order_and_updates_lockfile_root() {
 }
 
 #[test]
+fn test_node_preset_preserves_tab_indent_and_crlf() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    let package_json =
+        "{\r\n\t\"name\": \"demo\",\r\n\t\"version\": \"1.0.0\",\r\n\t\"private\": true\r\n}\r\n";
+    std::fs::write(dir.path().join("package.json"), package_json).unwrap();
+
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "fix: something"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create fix commit");
+
+    cmd.arg("--preset");
+    cmd.arg("node");
+    let output = cmd.output().expect("Failed to run grubble");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let package_after = std::fs::read_to_string(dir.path().join("package.json")).unwrap();
+    assert_eq!(package_after, package_json.replace("1.0.0", "1.0.1"));
+}
+
+#[test]
 fn test_raw_with_git_preset_unchanged() {
     // Regression guard: --raw --preset git must still read from git tags
     let (_dir, mut cmd) = setup_test_repo();
