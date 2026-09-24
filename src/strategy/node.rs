@@ -43,6 +43,15 @@ impl Strategy for NodeStrategy {
 
                 package["version"] = Value::String(new_version.to_string());
 
+                // package-lock.json repeats the root package's version under packages[""]
+                if let Some(root_version) = package
+                    .get_mut("packages")
+                    .and_then(|packages| packages.get_mut(""))
+                    .and_then(|root| root.get_mut("version"))
+                {
+                    *root_version = Value::String(new_version.to_string());
+                }
+
                 let updated_content = serde_json::to_string_pretty(&package)?;
                 fs::write(file, format!("{}\n", updated_content))?;
 

@@ -39,7 +39,7 @@ The `preset` option controls what files grubble writes.
 
 - **`git`** (default and fallback) — tracks versions via `vX.Y.Z` tags only. No files are modified. Use this for monorepos, projects with their own versioning scheme, and languages that do not have a built-in Grubble preset. Pass the tag-derived version to the project's build or packaging script when an artifact needs an embedded version.
 - **`rust`** — updates the `version` field in `Cargo.toml` and refreshes `Cargo.lock`. Pairs with `cargo publish`.
-- **`node`** — updates the `version` field in `package.json` and `package-lock.json`. Pairs with `npm publish`.
+- **`node`** — updates the `version` field in `package.json` and `package-lock.json` (including the root entry under `packages[""]`), leaving key order and all other fields unchanged. Pairs with `npm publish`.
 - **`python`** — updates the PEP 621 `version` field in `pyproject.toml` (`[project]` / `[tool.poetry]`) and `__version__` / `VERSION` constant lines in listed package files. Pairs with `pip publish` / `twine upload`.
 
 For a project without a supported package manifest, omit `preset` or set it explicitly to `git`:
