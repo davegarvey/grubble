@@ -766,6 +766,55 @@ fn test_json_output_normal_run_no_bump() {
 }
 
 #[test]
+fn test_json_output_normal_run_reports_previous_version_and_bump_type() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "feat: add thing"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create feat commit");
+
+    cmd.args(["--tag", "--output", "json"]);
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = stdout.trim();
+    let parsed: serde_json::Value = serde_json::from_str(stdout)
+        .unwrap_or_else(|e| panic!("stdout is not valid JSON '{}': {}", stdout, e));
+
+    assert_eq!(parsed["version"], "1.1.0");
+    assert_eq!(parsed["previous_version"], "1.0.0");
+    assert_eq!(parsed["bump_type"], "minor");
+}
+
+#[test]
+fn test_raw_json_output_reports_previous_version_and_bump_type() {
+    let (dir, mut cmd) = setup_test_repo();
+
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "fix: repair thing"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create fix commit");
+
+    cmd.args(["--raw", "--output", "json"]);
+    let output = cmd.output().expect("Failed to run grubble");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = stdout.trim();
+    let parsed: serde_json::Value = serde_json::from_str(stdout)
+        .unwrap_or_else(|e| panic!("stdout is not valid JSON '{}': {}", stdout, e));
+
+    assert_eq!(parsed["version"], "1.0.1");
+    assert_eq!(parsed["previous_version"], "1.0.0");
+    assert_eq!(parsed["bump_type"], "patch");
+    assert_eq!(parsed["preset"], "git");
+}
+
+#[test]
 fn test_file_ahead_of_tag_fails() {
     let (dir, mut cmd) = setup_test_repo();
 

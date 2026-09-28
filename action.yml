@@ -87,6 +87,10 @@ inputs:
     description: 'Optional: a GitHub token (PAT or GitHub App installation token) to use for git push authentication. Only needed if you must bypass branch protection. When set, the remote URL is rewritten with the token before grubble runs. Prefer the `branch` + `create-pr` flow instead.'
     required: false
     default: ''
+  grubble-path:
+    description: 'Path to a grubble binary to use instead of downloading a release. Intended for testing the Action against a locally built binary, or for workflows that build grubble from source.'
+    required: false
+    default: ''
   release-from-pr:
     description: 'Run `grubble --release-from-pr <NUMBER>` instead of the bump. When set, the bump-related steps are skipped and the resolved tag spec is emitted as the `release-spec` output. Use this in a post-merge workflow step after a release PR has been merged. Requires `GH_TOKEN` or `GITHUB_TOKEN` in the env. The Action is read-only in this mode (no commits, tags, or pushes).'
     required: false
@@ -157,6 +161,7 @@ runs:
         echo "os=$OS" >> $GITHUB_OUTPUT
 
     - name: Resolve release version
+      if: inputs.grubble-path == ''
       id: release
       env:
         ACTION_REF: ${{ github.action_ref }}
@@ -246,6 +251,7 @@ runs:
         echo "Using grubble version: $RESOLVED_VERSION"
 
     - name: Download binary
+      if: inputs.grubble-path == ''
       shell: bash
       run: |
         echo "::group::Download grubble binary"
@@ -260,6 +266,7 @@ runs:
         echo "::endgroup::"
 
     - name: Verify checksum
+      if: inputs.grubble-path == ''
       shell: bash
       run: |
         echo "::group::Verify checksum"
@@ -289,7 +296,7 @@ runs:
         echo "::endgroup::"
 
     - name: Extract binary (Unix)
-      if: steps.detect.outputs.os != 'Windows'
+      if: inputs.grubble-path == '' && steps.detect.outputs.os != 'Windows'
       shell: bash
       run: |
         echo "::group::Extract binary"
@@ -299,13 +306,33 @@ runs:
         echo "::endgroup::"
 
     - name: Extract binary (Windows)
-      if: steps.detect.outputs.os == 'Windows'
+      if: inputs.grubble-path == '' && steps.detect.outputs.os == 'Windows'
       shell: pwsh
       run: |
         Write-Output "::group::Extract binary"
         Expand-Archive -Path "${{ steps.detect.outputs.archive }}" -DestinationPath . -Force
         Write-Output "✓ Binary ready"
         Write-Output "::endgroup::"
+
+    - name: Locate binary
+      id: bin
+      shell: bash
+      env:
+        GRUBBLE_PATH: ${{ inputs.grubble-path }}
+      run: |
+        if [ -n "$GRUBBLE_PATH" ]; then
+          BIN="$GRUBBLE_PATH"
+        elif [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
+          BIN="./grubble.exe"
+        else
+          BIN="./grubble"
+        fi
+        if [ ! -f "$BIN" ]; then
+          echo "::error::grubble binary not found at $BIN"
+          exit 1
+        fi
+        echo "path=$BIN" >> "$GITHUB_OUTPUT"
+        "$BIN" --version
 
     - name: Validate inputs
       if: inputs.create-pr == 'true' || inputs.auto-merge == 'true'
@@ -328,193 +355,115 @@ runs:
         git remote set-url origin "https://x-access-token:${{ inputs.token }}@github.com/${{ github.repository }}"
         echo "✓ Remote URL updated with custom token"
 
-    - name: Get current version
-      if: inputs.release-from-pr == ''
-      id: current
-      shell: bash
-      run: |
-        # --raw honors --preset (v5+). Pass through the preset; the binary
-        # resolves the current version from the correct source.
-        if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-          CURRENT_VERSION=$(./grubble.exe --raw --preset "${{ inputs.preset }}" 2>/dev/null) || true
-        else
-          CURRENT_VERSION=$(./grubble --raw --preset "${{ inputs.preset }}" 2>/dev/null) || true
-        fi
-        if [ -z "$CURRENT_VERSION" ]; then
-          CURRENT_VERSION="0.0.0"
-        fi
-        echo "previous_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-
     - name: Run bump
       if: inputs.release-from-pr == ''
       id: bump
       shell: bash
+      env:
+        GRUBBLE: ${{ steps.bin.outputs.path }}
+        IN_PUSH: ${{ inputs.push }}
+        IN_TAG: ${{ inputs.tag }}
+        IN_RELEASE_NOTES: ${{ inputs.release-notes }}
+        IN_RAW: ${{ inputs.raw }}
+        IN_QUIET: ${{ inputs.quiet }}
+        IN_PRESET: ${{ inputs.preset }}
+        IN_TAG_PREFIX: ${{ inputs.tag-prefix }}
+        IN_COMMIT_PREFIX: ${{ inputs.commit-prefix }}
+        IN_PACKAGE_FILES: ${{ inputs.package-files }}
+        IN_GIT_USER_NAME: ${{ inputs.git-user-name }}
+        IN_GIT_USER_EMAIL: ${{ inputs.git-user-email }}
+        IN_UPDATE_MAJOR_TAG: ${{ inputs.update-major-tag }}
+        IN_UPDATE_MINOR_TAG: ${{ inputs.update-minor-tag }}
+        IN_CHANGELOG: ${{ inputs.changelog }}
+        IN_DRY_RUN: ${{ inputs.dry-run }}
+        IN_BUMP_TYPE_ONLY: ${{ inputs.bump-type-only }}
+        IN_BRANCH: ${{ inputs.branch }}
+        IN_CREATE_PR: ${{ inputs.create-pr }}
       run: |
-        ARGS=""
+        # Inputs arrive through env and arguments are built as arrays, so
+        # values containing spaces or quotes reach grubble unchanged.
+        # Flags that affect where the version is read from.
+        CONFIG_ARGS=()
+        [ -n "$IN_PRESET" ] && CONFIG_ARGS+=(--preset "$IN_PRESET")
+        [ -n "$IN_TAG_PREFIX" ] && CONFIG_ARGS+=(--tag-prefix "$IN_TAG_PREFIX")
+        [ -n "$IN_COMMIT_PREFIX" ] && CONFIG_ARGS+=(--commit-prefix "$IN_COMMIT_PREFIX")
+        [ -n "$IN_PACKAGE_FILES" ] && CONFIG_ARGS+=(--package-files "$IN_PACKAGE_FILES")
 
         # Handle bump-type-only mode first
-        if [ "${{ inputs.bump-type-only }}" = "true" ]; then
-          if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-            BUMP_TYPE=$(./grubble.exe --bump-type)
-          else
-            BUMP_TYPE=$(./grubble --bump-type)
-          fi
+        if [ "$IN_BUMP_TYPE_ONLY" = "true" ]; then
+          BUMP_TYPE=$("$GRUBBLE" --bump-type "${CONFIG_ARGS[@]}")
           echo "$BUMP_TYPE"
-          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+          echo "bump_type=$BUMP_TYPE" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
         # Handle dry-run mode
-        if [ "${{ inputs.dry-run }}" = "true" ]; then
-          if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-            ./grubble.exe --dry-run
-          else
-            ./grubble --dry-run
-          fi
-          if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-            BUMP_TYPE=$(./grubble.exe --bump-type)
-          else
-            BUMP_TYPE=$(./grubble --bump-type)
-          fi
-          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+        if [ "$IN_DRY_RUN" = "true" ]; then
+          "$GRUBBLE" --dry-run "${CONFIG_ARGS[@]}"
+          BUMP_TYPE=$("$GRUBBLE" --bump-type "${CONFIG_ARGS[@]}")
+          echo "bump_type=$BUMP_TYPE" >> "$GITHUB_OUTPUT"
           exit 0
         fi
+
+        ARGS=("${CONFIG_ARGS[@]}")
 
         # When create-pr is set without an explicit branch, the binary commits
         # locally (no --push), then the "Push release branch" step creates the
         # branch and pushes it.
-        if [ "${{ inputs.push }}" = "true" ]; then
-          if [ "${{ inputs.create-pr }}" != "true" ] || [ -n "${{ inputs.branch }}" ]; then
-            ARGS="$ARGS --push"
+        if [ "$IN_PUSH" = "true" ]; then
+          if [ "$IN_CREATE_PR" != "true" ] || [ -n "$IN_BRANCH" ]; then
+            ARGS+=(--push)
           fi
         fi
 
-        if [ "${{ inputs.tag }}" = "true" ]; then
-          ARGS="$ARGS --tag"
-        fi
-
-        if [ "${{ inputs.release-notes }}" = "true" ]; then
-          ARGS="$ARGS --release-notes"
-        fi
-
-        if [ "${{ inputs.raw }}" = "true" ]; then
-          ARGS="$ARGS --raw"
-        fi
-
-        if [ "${{ inputs.quiet }}" = "true" ]; then
-          ARGS="$ARGS --quiet"
-        fi
-
-        if [ -n "${{ inputs.preset }}" ]; then
-          ARGS="$ARGS --preset ${{ inputs.preset }}"
-        fi
-
-        if [ -n "${{ inputs.tag-prefix }}" ]; then
-          ARGS="$ARGS --tag-prefix ${{ inputs.tag-prefix }}"
-        fi
-
-        if [ -n "${{ inputs.commit-prefix }}" ]; then
-          ARGS="$ARGS --commit-prefix \"${{ inputs.commit-prefix }}\""
-        fi
-
-        if [ -n "${{ inputs.package-files }}" ]; then
-          ARGS="$ARGS --package-files ${{ inputs.package-files }}"
-        fi
-
-        if [ -n "${{ inputs.git-user-name }}" ]; then
-          ARGS="$ARGS --git-user-name \"${{ inputs.git-user-name }}\""
-        fi
-
-        if [ -n "${{ inputs.git-user-email }}" ]; then
-          ARGS="$ARGS --git-user-email \"${{ inputs.git-user-email }}\""
-        fi
-
-        if [ "${{ inputs.update-major-tag }}" = "true" ]; then
-          ARGS="$ARGS --update-major-tag"
-        fi
-
-        if [ "${{ inputs.update-minor-tag }}" = "true" ]; then
-          ARGS="$ARGS --update-minor-tag"
-        fi
-
-        if [ "${{ inputs.changelog }}" = "true" ]; then
-          ARGS="$ARGS --changelog"
-        fi
-
-        if [ -n "${{ inputs.branch }}" ]; then
-          ARGS="$ARGS --git-branch ${{ inputs.branch }}"
-        fi
+        [ "$IN_TAG" = "true" ] && ARGS+=(--tag)
+        [ "$IN_RELEASE_NOTES" = "true" ] && ARGS+=(--release-notes)
+        [ "$IN_RAW" = "true" ] && ARGS+=(--raw)
+        [ "$IN_QUIET" = "true" ] && ARGS+=(--quiet)
+        [ -n "$IN_GIT_USER_NAME" ] && ARGS+=(--git-user-name "$IN_GIT_USER_NAME")
+        [ -n "$IN_GIT_USER_EMAIL" ] && ARGS+=(--git-user-email "$IN_GIT_USER_EMAIL")
+        [ "$IN_UPDATE_MAJOR_TAG" = "true" ] && ARGS+=(--update-major-tag)
+        [ "$IN_UPDATE_MINOR_TAG" = "true" ] && ARGS+=(--update-minor-tag)
+        [ "$IN_CHANGELOG" = "true" ] && ARGS+=(--changelog)
+        [ -n "$IN_BRANCH" ] && ARGS+=(--git-branch "$IN_BRANCH")
 
         # Run grubble. v5 contract: exit 0 = success (bumped or clean no-op),
         # non-zero = error. set -e (default in composite action steps) handles
-        # the failure case automatically.
-        if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-          ./grubble.exe $ARGS
-        else
-          ./grubble $ARGS
-        fi
+        # the failure case automatically. Logs go to stderr; stdout carries
+        # only the JSON result.
+        RESULT=$("$GRUBBLE" "${ARGS[@]}" --output json | tr -d '\r')
 
-        # Get the new version — forward config flags so --raw uses the same preset and files.
-        # Only version-relevant flags (not action flags like --push/--tag) to keep --raw a pure read.
-        # v5 contract: --raw exits 0 whenever a version is produced, so no exit-code handling needed.
-        READ_ARGS="--raw"
-        if [ -n "${{ inputs.preset }}" ]; then
-          READ_ARGS="$READ_ARGS --preset ${{ inputs.preset }}"
-        fi
-        if [ -n "${{ inputs.package-files }}" ]; then
-          READ_ARGS="$READ_ARGS --package-files ${{ inputs.package-files }}"
-        fi
-        if [ -n "${{ inputs.tag-prefix }}" ]; then
-          READ_ARGS="$READ_ARGS --tag-prefix ${{ inputs.tag-prefix }}"
-        fi
-        if [ -n "${{ inputs.commit-prefix }}" ]; then
-          READ_ARGS="$READ_ARGS --commit-prefix \"${{ inputs.commit-prefix }}\""
-        fi
-        if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-          NEW_VERSION=$(./grubble.exe $READ_ARGS)
-        else
-          NEW_VERSION=$(./grubble $READ_ARGS)
-        fi
-        if [ -z "$NEW_VERSION" ]; then
-          NEW_VERSION="${{ steps.current.outputs.previous_version }}"
-        fi
-
-        echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-
-        # Determine bump type
-        PREV="${{ steps.current.outputs.previous_version }}"
-        if [ "$NEW_VERSION" != "$PREV" ]; then
-          PREV_MAJOR=$(echo $PREV | cut -d. -f1)
-          PREV_MINOR=$(echo $PREV | cut -d. -f2)
-          PREV_PATCH=$(echo $PREV | cut -d. -f3)
-
-          NEW_MAJOR=$(echo $NEW_VERSION | cut -d. -f1)
-          NEW_MINOR=$(echo $NEW_VERSION | cut -d. -f2)
-          NEW_PATCH=$(echo $NEW_VERSION | cut -d. -f3)
-
-          if [ "$NEW_MAJOR" != "$PREV_MAJOR" ]; then
-            echo "bump_type=major" >> $GITHUB_OUTPUT
-          elif [ "$NEW_MINOR" != "$PREV_MINOR" ]; then
-            echo "bump_type=minor" >> $GITHUB_OUTPUT
-          elif [ "$NEW_PATCH" != "$PREV_PATCH" ]; then
-            echo "bump_type=patch" >> $GITHUB_OUTPUT
-          else
-            echo "bump_type=none" >> $GITHUB_OUTPUT
+        if [ -n "$RESULT" ]; then
+          echo "$RESULT"
+          NEW_VERSION=$(jq -r '.version' <<< "$RESULT" | tr -d '\r')
+          PREV=$(jq -r '.previous_version' <<< "$RESULT" | tr -d '\r')
+          BUMP_TYPE=$(jq -r '.bump_type' <<< "$RESULT" | tr -d '\r')
+          if [ "$PREV" = "null" ] || [ "$BUMP_TYPE" = "null" ]; then
+            echo "::error::grubble did not report previous_version and bump_type. The binary is older than this Action; pin the Action and binary to the same release."
+            exit 1
           fi
         else
-          echo "bump_type=none" >> $GITHUB_OUTPUT
+          # Clean no-op: the binary emits no JSON payload. With nothing to
+          # bump, --raw prints the current version.
+          NEW_VERSION=$("$GRUBBLE" --raw "${CONFIG_ARGS[@]}" | tr -d '\r')
+          PREV="$NEW_VERSION"
+          BUMP_TYPE=none
         fi
 
-        echo "previous_version=$PREV" >> $GITHUB_OUTPUT
+        {
+          echo "version=$NEW_VERSION"
+          echo "previous_version=$PREV"
+          echo "bump_type=$BUMP_TYPE"
+        } >> "$GITHUB_OUTPUT"
 
         # Branch output: explicit input > auto-generated release/v<NEW_VERSION> when create-pr is on
         # and a bump happened > empty. The "Push release branch" and "Create release PR" steps read this.
-        if [ -n "${{ inputs.branch }}" ]; then
-          echo "branch=${{ inputs.branch }}" >> $GITHUB_OUTPUT
-        elif [ "${{ inputs.create-pr }}" = "true" ] && [ "$NEW_VERSION" != "$PREV" ]; then
-          echo "branch=release/v${NEW_VERSION}" >> $GITHUB_OUTPUT
+        if [ -n "$IN_BRANCH" ]; then
+          echo "branch=$IN_BRANCH" >> "$GITHUB_OUTPUT"
+        elif [ "$IN_CREATE_PR" = "true" ] && [ "$BUMP_TYPE" != "none" ]; then
+          echo "branch=release/v${NEW_VERSION}" >> "$GITHUB_OUTPUT"
         else
-          echo "branch=" >> $GITHUB_OUTPUT
+          echo "branch=" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Push release branch
@@ -564,6 +513,7 @@ runs:
       if: inputs.release-from-pr != ''
       id: resolve_release
       env:
+        GRUBBLE: ${{ steps.bin.outputs.path }}
         GH_TOKEN: ${{ github.token }}
         GITHUB_TOKEN: ${{ github.token }}
       shell: bash
@@ -571,11 +521,7 @@ runs:
         # Read-only resolution: query the GitHub API for the PR, validate the
         # head branch matches ^release/v\d+\.\d+\.\d+$ and the PR is merged,
         # and emit the tag spec as a JSON output. No commits, tags, or pushes.
-        if [ "${{ steps.detect.outputs.os }}" = "Windows" ]; then
-          SPEC=$(./grubble.exe --release-from-pr "${{ inputs.release-from-pr }}" --output json)
-        else
-          SPEC=$(./grubble --release-from-pr "${{ inputs.release-from-pr }}" --output json)
-        fi
+        SPEC=$("$GRUBBLE" --release-from-pr "${{ inputs.release-from-pr }}" --output json)
         echo "$SPEC"
 
         # Emit the spec as a multi-line output. The trailing newline on

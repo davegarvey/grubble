@@ -47,3 +47,149 @@ jobs:
 
     - name: Build (debug)
       run: cargo build --verbose
+  action:
+    name: Action (${{ matrix.os }}, ${{ matrix.preset }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        preset: [git, node]
+    defaults:
+      run:
+        shell: bash
+    env:
+      PRESET: ${{ matrix.preset }}
+
+    steps:
+    # The Action runs its commands in the workspace root, so grubble is
+    # checked out into a subdirectory and the fixture repository lives at the root.
+    - uses: actions/checkout@v4
+      with:
+        path: grubble-src
+
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: stable
+        cache: true
+        cache-workspaces: grubble-src
+
+    - name: Build grubble
+      working-directory: grubble-src
+      run: cargo build
+
+    - name: Create fixture repository
+      id: fixture
+      run: |
+        git init -q -b main .
+        echo "grubble-src/" >> .git/info/exclude
+        git config user.name "Fixture"
+        git config user.email "fixture@example.com"
+        if [ "$PRESET" = "node" ]; then
+          printf '{\n  "name": "fixture",\n  "version": "1.0.0"\n}\n' > package.json
+          git add package.json
+        fi
+        git commit -q --allow-empty -m "chore: initial commit"
+        git tag v1.0.0
+        git init -q --bare "$RUNNER_TEMP/remote.git"
+        git remote add origin "$RUNNER_TEMP/remote.git"
+        git push -q -u origin main --tags
+        git commit -q --allow-empty -m "feat: add feature"
+        echo "binary=grubble-src/target/debug/grubble${{ runner.os == 'Windows' && '.exe' || '' }}" >> "$GITHUB_OUTPUT"
+
+    - name: Run Action (minor bump with tag and push)
+      id: minor
+      uses: ./grubble-src
+      with:
+        grubble-path: ${{ steps.fixture.outputs.binary }}
+        preset: ${{ matrix.preset }}
+        tag: 'true'
+        push: 'true'
+        commit-prefix: 'chore(release): bump version'
+
+    - name: Check minor bump
+      env:
+        VERSION: ${{ steps.minor.outputs.version }}
+        PREVIOUS: ${{ steps.minor.outputs.previous-version }}
+        BUMP: ${{ steps.minor.outputs.bump-type }}
+      run: |
+        check() { [ "$2" = "$3" ] || { echo "::error::$1: expected '$3', got '$2'"; exit 1; }; }
+        check version "$VERSION" 1.1.0
+        check previous-version "$PREVIOUS" 1.0.0
+        check bump-type "$BUMP" minor
+        check remote-tag "$(git ls-remote --tags origin refs/tags/v1.1.0 | wc -l | tr -d ' ')" 1
+        if [ "$PRESET" = "node" ]; then
+          grep -q '"version": "1.1.0"' package.json || { echo "::error::package.json not updated"; exit 1; }
+          check commit-subject "$(git log -1 --format=%s)" "chore(release): bump version to 1.1.0"
+          check remote-head "$(git ls-remote origin refs/heads/main | cut -f1)" "$(git rev-parse HEAD)"
+        fi
+
+    - name: Run Action (no-op)
+      id: noop
+      uses: ./grubble-src
+      with:
+        grubble-path: ${{ steps.fixture.outputs.binary }}
+        preset: ${{ matrix.preset }}
+        tag: 'true'
+
+    - name: Check no-op
+      env:
+        VERSION: ${{ steps.noop.outputs.version }}
+        PREVIOUS: ${{ steps.noop.outputs.previous-version }}
+        BUMP: ${{ steps.noop.outputs.bump-type }}
+      run: |
+        check() { [ "$2" = "$3" ] || { echo "::error::$1: expected '$3', got '$2'"; exit 1; }; }
+        check version "$VERSION" 1.1.0
+        check previous-version "$PREVIOUS" 1.1.0
+        check bump-type "$BUMP" none
+
+    - name: Add fix commit
+      run: |
+        git commit -q --allow-empty -m "fix: repair feature"
+
+    - name: Run Action (bump-type-only)
+      id: bump_type_only
+      uses: ./grubble-src
+      with:
+        grubble-path: ${{ steps.fixture.outputs.binary }}
+        preset: ${{ matrix.preset }}
+        bump-type-only: 'true'
+
+    - name: Run Action (dry-run)
+      id: dry_run
+      uses: ./grubble-src
+      with:
+        grubble-path: ${{ steps.fixture.outputs.binary }}
+        preset: ${{ matrix.preset }}
+        dry-run: 'true'
+
+    - name: Check read-only modes
+      env:
+        BUMP_TYPE_ONLY: ${{ steps.bump_type_only.outputs.bump-type }}
+        DRY_RUN: ${{ steps.dry_run.outputs.bump-type }}
+      run: |
+        check() { [ "$2" = "$3" ] || { echo "::error::$1: expected '$3', got '$2'"; exit 1; }; }
+        check bump-type-only "$BUMP_TYPE_ONLY" patch
+        check dry-run "$DRY_RUN" patch
+        check tags "$(git tag --list 'v1.1.1' | wc -l | tr -d ' ')" 0
+
+    - name: Run Action (patch bump)
+      id: patch
+      uses: ./grubble-src
+      with:
+        grubble-path: ${{ steps.fixture.outputs.binary }}
+        preset: ${{ matrix.preset }}
+        tag: 'true'
+
+    - name: Check patch bump
+      env:
+        VERSION: ${{ steps.patch.outputs.version }}
+        PREVIOUS: ${{ steps.patch.outputs.previous-version }}
+        BUMP: ${{ steps.patch.outputs.bump-type }}
+      run: |
+        check() { [ "$2" = "$3" ] || { echo "::error::$1: expected '$3', got '$2'"; exit 1; }; }
+        check version "$VERSION" 1.1.1
+        check previous-version "$PREVIOUS" 1.1.0
+        check bump-type "$BUMP" patch
+        check tag "$(git tag --list 'v1.1.1')" v1.1.1

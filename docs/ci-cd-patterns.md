@@ -72,12 +72,14 @@ grubble --bump-type --output json
 
 grubble --raw --preset rust --output json
 # {
-#   "version": "1.2.3",
+#   "version": "1.3.0",
+#   "previous_version": "1.2.3",
+#   "bump_type": "minor",
 #   "preset": "rust"
 # }
 ```
 
-`--output json` also works in bump mode (with `--push`, `--changelog`, etc.), emitting `{"version": "x.y.z"}` after files are written and pushed. This is useful for workflows that need the actual version without grepping package files. Use `--output json` from CI scripts that need to parse the result instead of shell-substring matching.
+`--output json` also works in bump mode (with `--push`, `--changelog`, etc.), emitting `{"version": "x.y.z", "previous_version": "x.y.z", "bump_type": "minor"}` after files are written and pushed. A clean no-op emits nothing on stdout. This is useful for workflows that need the actual version without grepping package files. Use `--output json` from CI scripts that need to parse the result instead of shell-substring matching.
 
 ## First Release
 
