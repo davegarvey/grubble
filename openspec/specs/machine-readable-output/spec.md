@@ -62,9 +62,13 @@ The `grubble --raw --output json` mode SHALL write a single JSON object to stdou
 ```json
 {
   "version": "<string>",
+  "previous_version": "<string>",
+  "bump_type": "major | minor | patch | none",
   "preset": "<string>"
 }
 ```
+
+`version` is the predicted version, `previous_version` is the version the bump would start from, and `bump_type` is the bump that produces `version`. When no bump is needed, `version` and `previous_version` are both the current version and `bump_type` is `"none"`.
 
 The JSON object MUST be the only content written to stdout in this mode.
 
@@ -80,12 +84,28 @@ The JSON object MUST be the only content written to stdout in this mode.
 - **AND** `version` SHALL be `"1.2.3"`
 - **AND** `preset` SHALL be `"git"`
 
+#### Scenario: JSON raw output with a pending bump
+- **WHEN** `grubble --raw --output json` runs in a git repo with a `v1.0.0` tag followed by a `fix:` commit
+- **THEN** `version` SHALL be `"1.0.1"`
+- **AND** `previous_version` SHALL be `"1.0.0"`
+- **AND** `bump_type` SHALL be `"patch"`
+
 ### Requirement: JSON output supports normal bump and dry-run modes
-The `grubble` CLI SHALL accept `--output json` in normal bump and dry-run modes. A successful version bump SHALL emit a JSON object containing the written or predicted version, while a successful no-op SHALL exit 0 without emitting a JSON payload. Informational messages SHALL remain off stdout when JSON output is requested.
+The `grubble` CLI SHALL accept `--output json` in normal bump and dry-run modes. A successful version bump SHALL emit a JSON object containing the written or predicted version, the version it was bumped from, and the bump type:
+```json
+{
+  "version": "<string>",
+  "previous_version": "<string>",
+  "bump_type": "major | minor | patch"
+}
+```
+A successful dry-run bump SHALL emit the `--raw` schema. A successful no-op SHALL exit 0 without emitting a JSON payload. Informational messages SHALL remain off stdout when JSON output is requested.
 
 #### Scenario: JSON output with a normal bump
 - **WHEN** `grubble --output json` runs and a version bump is performed
 - **THEN** stdout SHALL contain a single JSON object with the written version
+- **AND** `previous_version` SHALL be the version the bump started from
+- **AND** `bump_type` SHALL be the bump that was applied
 - **AND** the process SHALL exit with code 0
 
 #### Scenario: JSON output with a normal no-op

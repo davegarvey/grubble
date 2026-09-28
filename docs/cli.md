@@ -78,7 +78,9 @@ grubble --bump-type --output json
 
 grubble --raw --preset rust --output json
 # {
-#   "version": "1.2.3",
+#   "version": "1.3.0",
+#   "previous_version": "1.2.3",
+#   "bump_type": "minor",
 #   "preset": "rust"
 # }
 ```

@@ -175,10 +175,18 @@ fn log(msg: &str, is_raw: bool) {
     }
 }
 
-fn emit_raw(version: &versioner::Version, preset: &str, output: Output) {
+fn emit_raw(
+    version: &versioner::Version,
+    previous_version: &versioner::Version,
+    bump: BumpType,
+    preset: &str,
+    output: Output,
+) {
     if output == Output::Json {
         let json = serde_json::json!({
             "version": version.to_string(),
+            "previous_version": previous_version.to_string(),
+            "bump_type": bump.as_str(),
             "preset": preset,
         });
         println!(
@@ -423,7 +431,13 @@ fn run() -> BumperResult<ExitCode> {
     if commits.is_empty() {
         log("No commits since last tag.", is_raw);
         if is_raw {
-            emit_raw(&current_version, &config.preset, output);
+            emit_raw(
+                &current_version,
+                &current_version,
+                BumpType::None,
+                &config.preset,
+                output,
+            );
         }
         return Ok(ExitCode::NoBump);
     }
@@ -437,7 +451,13 @@ fn run() -> BumperResult<ExitCode> {
     if analysis.bump == BumpType::None {
         log("No version bump required.", is_raw);
         if is_raw {
-            emit_raw(&current_version, &config.preset, output);
+            emit_raw(
+                &current_version,
+                &current_version,
+                BumpType::None,
+                &config.preset,
+                output,
+            );
         }
         return Ok(ExitCode::NoBump);
     }
@@ -470,7 +490,13 @@ fn run() -> BumperResult<ExitCode> {
 
     if config.raw {
         // --raw or --dry-run — don't modify files
-        emit_raw(&new_version, &config.preset, output);
+        emit_raw(
+            &new_version,
+            bump_base,
+            analysis.bump,
+            &config.preset,
+            output,
+        );
         return Ok(ExitCode::Ok);
     }
 
@@ -546,6 +572,8 @@ fn run() -> BumperResult<ExitCode> {
     if output == Output::Json {
         let json = serde_json::json!({
             "version": new_version.to_string(),
+            "previous_version": bump_base.to_string(),
+            "bump_type": analysis.bump.as_str(),
         });
         println!(
             "{}",

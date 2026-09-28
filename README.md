@@ -99,6 +99,8 @@ The Action exposes three outputs:
 
 When no bump is needed, the Action exits cleanly with `bump-type=none`.
 
+The Action downloads the release binary that matches its own version. To use a binary you have built yourself, for example in a workflow that builds grubble from source, pass its path as `grubble-path`.
+
 ## Usage
 
 ```bash
