@@ -16,8 +16,8 @@ Grubble reads `.versionrc.json` from the project root. Flags and file values are
 | `changelog` | `--changelog` | `false` | Generate or update `CHANGELOG.md`. |
 | `updateMajorTag` | `--update-major-tag` | `false` | Maintain a floating `v4` tag pointing to the latest `v4.x.x`. |
 | `updateMinorTag` | `--update-minor-tag` | `false` | Maintain a floating `v4.1` tag pointing to the latest `v4.1.x`. |
-| `gitUserName` | `--git-user-name` | `github-actions[bot]` | Identity used for the bump commit when no local git user is configured. |
-| `gitUserEmail` | `--git-user-email` | `41898282+github-actions[bot]@users.noreply.github.com` | Email used for the bump commit when no local git user is configured. |
+| `gitUserName` | `--git-user-name` | git's `user.name`, else `grubble-bot` | Author and committer name for grubble's commits and tags. |
+| `gitUserEmail` | `--git-user-email` | git's `user.email`, else `grubble-bot@noreply.local` | Author and committer email for grubble's commits and tags. |
 | `types` | — | see [Commit Types](#commit-types) | Per-type bump behavior. Valid values: `major`, `minor`, `patch`, `none`. |
 
 `packageFiles` uses a JSON array in `.versionrc.json`:
@@ -31,7 +31,7 @@ Grubble reads `.versionrc.json` from the project root. Flags and file values are
 
 The equivalent CLI input is `--package-files pyproject.toml,agentflow/main.py`.
 
-If your repo has a local `user.name` / `user.email` set, grubble uses those and ignores `gitUserName` / `gitUserEmail`. In CI, set these to match your bot user (e.g. `github-actions[bot]`).
+grubble never writes git config. When `gitUserName` / `gitUserEmail` (or the flags) are set, they apply only to grubble's own commits and tags. Otherwise grubble uses git's configured identity, and falls back to `grubble-bot` only when git has none. In CI, set them to match your bot user (e.g. `github-actions[bot]`); the GitHub Action does this by default.
 
 ## Versioning Strategies
 

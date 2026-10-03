@@ -1383,3 +1383,139 @@ fn test_push_to_branch_with_force_tags() {
         ls_tags
     );
 }
+
+fn git_output(dir: &std::path::Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .expect("Failed to run git");
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+/// Repo at v1.0.0 with an uncommitted package.json and a pending fix commit,
+/// so a node-preset run makes a bump commit.
+fn setup_node_repo_with_fix() -> (TempDir, Command) {
+    let (dir, cmd) = setup_test_repo();
+    std::fs::write(
+        dir.path().join("package.json"),
+        "{\n  \"name\": \"demo\",\n  \"version\": \"1.0.0\"\n}\n",
+    )
+    .unwrap();
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "fix: repair thing"])
+        .current_dir(&dir)
+        .output()
+        .expect("Failed to create fix commit");
+    (dir, cmd)
+}
+
+#[test]
+fn test_runs_do_not_change_local_git_identity() {
+    let (dir, _) = setup_node_repo_with_fix();
+
+    for args in [
+        vec!["--bump-type"],
+        vec!["--dry-run"],
+        vec!["--raw"],
+        vec!["--preset", "node"],
+    ] {
+        let output = Command::new(get_grubble_bin())
+            .args(&args)
+            .current_dir(&dir)
+            .output()
+            .expect("Failed to run grubble");
+        assert!(output.status.success(), "grubble {:?} failed", args);
+        assert_eq!(
+            git_output(dir.path(), &["config", "--local", "user.name"]),
+            "Test User",
+            "grubble {:?} changed user.name",
+            args
+        );
+        assert_eq!(
+            git_output(dir.path(), &["config", "--local", "user.email"]),
+            "test@test.com",
+            "grubble {:?} changed user.email",
+            args
+        );
+    }
+
+    // The bump commit uses the repo's own identity.
+    assert_eq!(
+        git_output(
+            dir.path(),
+            &["log", "-1", "--format=%an <%ae>|%cn <%ce>|%s"]
+        ),
+        "Test User <test@test.com>|Test User <test@test.com>|chore: bump version to 1.0.1"
+    );
+}
+
+#[test]
+fn test_explicit_git_identity_applies_without_changing_config() {
+    let (dir, mut cmd) = setup_node_repo_with_fix();
+
+    cmd.args([
+        "--preset",
+        "node",
+        "--git-user-name",
+        "Release Bot",
+        "--git-user-email",
+        "release-bot@example.com",
+    ]);
+    let output = cmd.output().expect("Failed to run grubble");
+    assert!(output.status.success());
+
+    assert_eq!(
+        git_output(dir.path(), &["log", "-1", "--format=%an <%ae>|%cn <%ce>"]),
+        "Release Bot <release-bot@example.com>|Release Bot <release-bot@example.com>"
+    );
+    assert_eq!(
+        git_output(dir.path(), &["config", "--local", "user.name"]),
+        "Test User"
+    );
+    assert_eq!(
+        git_output(dir.path(), &["config", "--local", "user.email"]),
+        "test@test.com"
+    );
+}
+
+#[test]
+fn test_default_git_identity_when_none_configured() {
+    let (dir, _) = setup_node_repo_with_fix();
+    for key in ["user.name", "user.email"] {
+        Command::new("git")
+            .args(["config", "--local", "--unset", key])
+            .current_dir(&dir)
+            .output()
+            .expect("Failed to unset git identity");
+    }
+    let empty_global = dir.path().join("empty-gitconfig");
+    std::fs::write(&empty_global, "").unwrap();
+
+    let output = Command::new(get_grubble_bin())
+        .args(["--preset", "node"])
+        .current_dir(&dir)
+        .env("GIT_CONFIG_GLOBAL", &empty_global)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env_remove("EMAIL")
+        .env_remove("GIT_AUTHOR_NAME")
+        .env_remove("GIT_AUTHOR_EMAIL")
+        .env_remove("GIT_COMMITTER_NAME")
+        .env_remove("GIT_COMMITTER_EMAIL")
+        .output()
+        .expect("Failed to run grubble");
+    assert!(
+        output.status.success(),
+        "grubble failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert_eq!(
+        git_output(dir.path(), &["log", "-1", "--format=%an <%ae>"]),
+        "grubble-bot <grubble-bot@noreply.local>"
+    );
+    assert_eq!(
+        git_output(dir.path(), &["config", "--local", "--get", "user.name"]),
+        ""
+    );
+}

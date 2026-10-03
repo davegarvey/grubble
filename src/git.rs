@@ -2,10 +2,19 @@ use crate::config::Config;
 use crate::error::{BumperError, BumperResult};
 use crate::versioner::Version;
 use std::process::Command;
+use std::sync::OnceLock;
+
+const DEFAULT_USER_NAME: &str = "grubble-bot";
+const DEFAULT_USER_EMAIL: &str = "grubble-bot@noreply.local";
+
+/// Author and committer environment applied to every git command grubble runs.
+static IDENTITY_ENV: OnceLock<Vec<(String, String)>> = OnceLock::new();
 
 fn run_git_command(args: &[&str]) -> BumperResult<String> {
+    let identity = IDENTITY_ENV.get().map(Vec::as_slice).unwrap_or_default();
     let output = Command::new("git")
         .args(args)
+        .envs(identity.iter().map(|(k, v)| (k, v)))
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
         .env("GIT_ASKPASS", "")
@@ -117,14 +126,32 @@ pub fn create_tag(version: &str, tag_prefix: &str, message: Option<&str>) -> Bum
     Ok(())
 }
 
-pub fn set_git_config(user_name: &str, user_email: &str) -> BumperResult<()> {
-    if !user_name.is_empty() {
-        run_git_command(&["config", "user.name", user_name])?;
+/// Choose the identity for grubble's own commits and tags without writing
+/// git config. An explicit name or email wins; otherwise git's configured
+/// identity is used, and grubble-bot applies only when git has none.
+pub fn set_identity(user_name: Option<&str>, user_email: Option<&str>) {
+    let mut env = Vec::new();
+    for (field, explicit, config_key, default) in [
+        ("NAME", user_name, "user.name", DEFAULT_USER_NAME),
+        ("EMAIL", user_email, "user.email", DEFAULT_USER_EMAIL),
+    ] {
+        let value = match explicit.filter(|v| !v.is_empty()) {
+            Some(v) => v,
+            None if identity_configured(field, config_key) => continue,
+            None => default,
+        };
+        env.push((format!("GIT_AUTHOR_{field}"), value.to_string()));
+        env.push((format!("GIT_COMMITTER_{field}"), value.to_string()));
     }
-    if !user_email.is_empty() {
-        run_git_command(&["config", "user.email", user_email])?;
-    }
-    Ok(())
+    let _ = IDENTITY_ENV.set(env);
+}
+
+fn identity_configured(field: &str, config_key: &str) -> bool {
+    let env_set = |name: &str| std::env::var(name).is_ok_and(|v| !v.is_empty());
+    env_set(&format!("GIT_AUTHOR_{field}"))
+        || env_set(&format!("GIT_COMMITTER_{field}"))
+        || (field == "EMAIL" && env_set("EMAIL"))
+        || run_git_command(&["config", "--get", config_key]).is_ok_and(|v| !v.is_empty())
 }
 
 pub fn push(branch: &str) -> BumperResult<()> {

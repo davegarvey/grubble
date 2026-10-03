@@ -2,15 +2,7 @@
 
 **"Author identity unknown"**
 
-Set a git identity in the workflow before running grubble:
-
-```yaml
-- run: |
-    git config user.name "github-actions[bot]"
-    git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-```
-
-The `--git-user-name` and `--git-user-email` flags are ignored when a local `user.name` / `user.email` is already set.
+grubble falls back to `grubble-bot` when git has no identity, so this error comes from other git commands in your workflow. Set an identity for those, or pass `--git-user-name` and `--git-user-email` to grubble to choose the identity for its own commits and tags. grubble does not write these values to git config.
 
 **"grubble: command not found"**
 

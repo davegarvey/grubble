@@ -32,11 +32,13 @@ pub struct Config {
     #[serde(default)]
     pub release_notes: bool,
 
-    #[serde(default = "default_git_user_name")]
-    pub git_user_name: String,
+    /// Identity for grubble's own commits and tags. When unset, git's
+    /// configured identity is used, falling back to grubble-bot.
+    #[serde(default)]
+    pub git_user_name: Option<String>,
 
-    #[serde(default = "default_git_user_email")]
-    pub git_user_email: String,
+    #[serde(default)]
+    pub git_user_email: Option<String>,
 
     #[serde(default = "default_types")]
     pub types: HashMap<String, String>,
@@ -73,14 +75,6 @@ fn default_preset() -> String {
     "git".to_string()
 }
 
-fn default_git_user_name() -> String {
-    "grubble-bot".to_string()
-}
-
-fn default_git_user_email() -> String {
-    "grubble-bot@noreply.local".to_string()
-}
-
 fn default_types() -> HashMap<String, String> {
     let mut types = HashMap::new();
     types.insert("feat".to_string(), "minor".to_string());
@@ -107,8 +101,8 @@ impl Default for Config {
             tag: false,
             preset: default_preset(),
             release_notes: false,
-            git_user_name: default_git_user_name(),
-            git_user_email: default_git_user_email(),
+            git_user_name: None,
+            git_user_email: None,
             types: default_types(),
             update_major_tag: false,
             update_minor_tag: false,
