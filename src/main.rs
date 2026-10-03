@@ -278,10 +278,10 @@ fn run() -> BumperResult<ExitCode> {
         config.release_notes = true;
     }
     if let Some(git_user_name) = args.git_user_name {
-        config.git_user_name = git_user_name;
+        config.git_user_name = Some(git_user_name);
     }
     if let Some(git_user_email) = args.git_user_email {
-        config.git_user_email = git_user_email;
+        config.git_user_email = Some(git_user_email);
     }
     if args.update_major_tag {
         config.update_major_tag = true;
@@ -328,8 +328,11 @@ fn run() -> BumperResult<ExitCode> {
         );
     }
 
-    // Set git config for commits
-    git::set_git_config(&config.git_user_name, &config.git_user_email)?;
+    // Choose the identity for grubble's own commits and tags.
+    git::set_identity(
+        config.git_user_name.as_deref(),
+        config.git_user_email.as_deref(),
+    );
 
     let strategy = load_strategy(&config);
 
@@ -613,14 +616,17 @@ fn run_release_version(
         config.commit_prefix = commit_prefix.clone();
     }
     if let Some(git_user_name) = &args.git_user_name {
-        config.git_user_name = git_user_name.clone();
+        config.git_user_name = Some(git_user_name.clone());
     }
     if let Some(git_user_email) = &args.git_user_email {
-        config.git_user_email = git_user_email.clone();
+        config.git_user_email = Some(git_user_email.clone());
     }
     let do_changelog = args.changelog;
 
-    git::set_git_config(&config.git_user_name, &config.git_user_email)?;
+    git::set_identity(
+        config.git_user_name.as_deref(),
+        config.git_user_email.as_deref(),
+    );
 
     let strategy = load_strategy(&config);
 
@@ -685,14 +691,6 @@ fn run_bump_type(args: &Args, output: Output) -> BumperResult<()> {
     if let Some(package_files) = &args.package_files {
         config.package_files = package_files.split(',').map(|s| s.to_string()).collect();
     }
-    if let Some(git_user_name) = &args.git_user_name {
-        config.git_user_name = git_user_name.clone();
-    }
-    if let Some(git_user_email) = &args.git_user_email {
-        config.git_user_email = git_user_email.clone();
-    }
-
-    git::set_git_config(&config.git_user_name, &config.git_user_email)?;
 
     // --initial-version validates semver format and errors if a tag already exists
     if let Some(ref ver_str) = args.initial_version {

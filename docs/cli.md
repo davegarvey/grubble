@@ -40,8 +40,8 @@ Configuration-backed flags have corresponding options in `.versionrc.json` (see 
 | `--commit-prefix` | string | `chore: bump version` | Prefix for the bump commit message. |
 | `--package-files` | string | `""` | Comma-separated list of files to update. |
 | `--validate-config` | bool | `false` | Validate `.versionrc.json` and exit without modifying files. |
-| `--git-user-name` | string | `github-actions[bot]` | Identity used for the bump commit. |
-| `--git-user-email` | string | `41898282+github-actions[bot]@users.noreply.github.com` | Email used for the bump commit. |
+| `--git-user-name` | string | git's `user.name`, else `grubble-bot` | Name for grubble's commits and tags. Does not change git config. |
+| `--git-user-email` | string | git's `user.email`, else `grubble-bot@noreply.local` | Email for grubble's commits and tags. Does not change git config. |
 | `--update-major-tag` | bool | `false` | Maintain a floating `v4` tag pointing to the latest `v4.x.x`. |
 | `--update-minor-tag` | bool | `false` | Maintain a floating `v4.1` tag pointing to the latest `v4.1.x`. |
 | `--changelog` | bool | `false` | Generate or update `CHANGELOG.md`. |
