@@ -48,14 +48,27 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       pr_number: ${{ steps.detect.outputs.pr_number }}
     permissions:
-      contents: write        # Push commits and tags
-      pull-requests: write   # Create the release PR
-      checks: write          # Create check runs on release branch
+      contents: write        # Create tags and GitHub Releases
+      pull-requests: read    # Find the merged release PR
     steps:
+    - name: Check release token
+      env:
+        RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+      run: |
+        if [ -z "$RELEASE_PAT" ]; then
+          echo "::error::The RELEASE_PAT secret is not set. It is needed to push the release branch and open the release PR so that CI runs on it."
+          exit 1
+        fi
+
+    # Check out with RELEASE_PAT so the release branch is pushed as a user,
+    # not as GITHUB_TOKEN. GitHub holds pull_request runs triggered by
+    # GITHUB_TOKEN for manual approval, so CI would never run on the release
+    # PR; runs triggered by a user token start normally.
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
         fetch-tags: true
+        token: ${{ secrets.RELEASE_PAT }}
 
     # We build from source (rather than using davegarvey/grubble@v5) so we can
     # dogfood new binary features immediately on merge, without waiting for a
@@ -262,7 +275,10 @@ jobs:
       # between the predicted and actual version.
       if: steps.bump.outputs.changed == 'true'
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Open the PR and enable auto-merge as a user (see checkout above).
+        # The merge event must also come from a user token so that it
+        # triggers this workflow to create the tag and GitHub Release.
+        GH_TOKEN: ${{ secrets.RELEASE_PAT }}
       run: |
         VERSION="${{ steps.bump.outputs.version }}"
         BRANCH="release/v${VERSION}"
@@ -290,24 +306,9 @@ jobs:
           exit 1
         fi
 
-        # Push the release branch.
+        # Push the release branch. CI runs on the release PR like any other
+        # PR, and auto-merge waits for its required checks.
         git push origin "${BRANCH}" --force-with-lease
-
-        # Create a passing check run for the required "test" check on the
-        # pushed commit. The pull_request event from the bot push cannot
-        # trigger a new workflow run (GitHub does not create runs from
-        # GITHUB_TOKEN events), so we create the check directly via the
-        # Check Runs API. The release branch content is the same as main
-        # plus a version set + CHANGELOG entry — both validated on main.
-        PUSHED_SHA=$(git rev-parse "${BRANCH}")
-        gh api "repos/${GITHUB_REPOSITORY}/check-runs" \
-          --method POST \
-          -f "name=test" \
-          -f "head_sha=${PUSHED_SHA}" \
-          -f "status=completed" \
-          -f "conclusion=success" \
-          -f "output[title]=Release branch check" \
-          -f "output[summary]=Content validated by CI on main"
 
         # Read the CHANGELOG entry to use as the PR body.
         CHANGELOG_BODY=$(./target/release/grubble --changelog-entry || echo "")
@@ -326,12 +327,10 @@ jobs:
           echo "Release PR opened for ${BRANCH}"
         fi
 
-        # Enable auto-merge with squash using the PAT so the merge event
-        # triggers the version workflow to create the tag + GitHub Release.
-        # With GITHUB_TOKEN, the auto-merge event would not create a new
-        # workflow run and the tag would never be created.
+        # Enable auto-merge with squash. GitHub merges the PR once CI passes,
+        # and the merge triggers this workflow to create the tag and release.
         for i in 1 2 3 4 5; do
-          if GH_TOKEN=${{ secrets.RELEASE_PAT }} gh pr merge "${BRANCH}" --auto --squash 2>/dev/null; then
+          if gh pr merge "${BRANCH}" --auto --squash 2>/dev/null; then
             echo "Auto-merge enabled on ${BRANCH}"
             break
           fi
